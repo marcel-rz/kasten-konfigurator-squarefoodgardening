@@ -1,3 +1,6 @@
+import { FRONTS, TOPS, roofExtra } from './options.js';
+import { PLANTS, rate, makePlan } from './plants.js';
+
 // Reine Berechnung: aus einer Konfiguration werden Geometrie, Materialliste,
 // Zuschnitt und Bauanleitung. Alle Maße in cm.
 
@@ -10,9 +13,10 @@ export const DEFAULTS = {
   posts: true, ps: 5, cageH: 60, postGround: 0,
   lw: 3, lt: 2,
   net: true, netType: 'vogelschutz', mesh: 2,
-  top: 'klapp',               // 'fest' | 'klapp' | 'offen'
+  top: 'klapp',               // Schlüssel aus TOPS (options.js)
+  roofH: 35,                  // Firsthöhe bei Sattel-/Bogendach
   chain: true,
-  front: 'doppeltuer',        // 'netz' | 'tuer' | 'doppeltuer'
+  front: 'doppeltuer',        // Schlüssel aus FRONTS (options.js)
   ground: 'rasen',            // Schlüssel aus GROUNDS
   drain: 5,                   // Drainageschicht in cm (nur wo nötig)
 };
@@ -75,8 +79,15 @@ export function sanitize(c) {
   o.net = o.posts && !!o.net;
   if (!NET_TYPES[o.netType]) o.netType = DEFAULTS.netType;
   if (!['bretter', 'schnur', 'keins'].includes(o.grid)) o.grid = DEFAULTS.grid;
-  if (!['fest', 'klapp', 'offen'].includes(o.top)) o.top = DEFAULTS.top;
-  if (!['netz', 'tuer', 'doppeltuer'].includes(o.front)) o.front = DEFAULTS.front;
+  if (!TOPS[o.top]) o.top = DEFAULTS.top;
+  if (!FRONTS[o.front]) o.front = DEFAULTS.front;
+  clamp('roofH', 10, 100);
+  const pk = new Set(PLANTS.map(p => p.k).concat('-')), plan = {};
+  if (o.plan && typeof o.plan === 'object') for (const [key, val] of Object.entries(o.plan)) {
+    const [i, j] = key.split(',').map(Number);
+    if (i >= 0 && j >= 0 && i < o.nx && j < o.nz && pk.has(val)) plan[key] = val;
+  }
+  o.plan = plan;
   return o;
 }
 
@@ -139,61 +150,32 @@ export function compute(cfg) {
     ? [{ ...boardsX, label: 'Kastenbrett (alle gleich)', qty: boardsX.qty + boardsZ.qty, side: 'beide', halfFlip: true }]
     : [boardsX, boardsZ];
 
-  // ---------- Leisten ----------
-  const laths = [];
-  let doorLeaf = null, doorH = 0, lidDX = 0, lidDZ = 0;
+  // ---------- Käfig: Latten, Netz, Beschläge ----------
+  const laths = [], hw = [];
+  let frontP = null, topP = null, netArea = 0, netEdge = 0, hinges = 0;
+  let screws = 4; // Außenecken des Kastens
   if (c.posts) {
     laths.push({ label: 'Querlatte vorne/hinten', len: G.oX, qty: 2 });
     laths.push({ label: 'Querlatte links/rechts', len: G.oZ, qty: 2 });
-    if (c.net && c.front !== 'netz') {
-      doorH = c.cageH - c.lw - 0.5;
-      const leaves = c.front === 'doppeltuer' ? 2 : 1;
-      const w = (G.oX - (leaves === 2 ? 1 : 0.5)) / leaves;
-      doorLeaf = { leaves, w, h: doorH };
-      laths.push({ label: 'Türrahmen oben/unten', len: w, qty: 2 * leaves });
-      laths.push({ label: 'Türrahmen seitlich', len: doorH - 2 * c.lw, qty: 2 * leaves });
-      if (leaves === 2) laths.push({ label: 'Schlagleiste Doppeltür', len: doorH, qty: 1 });
-    }
-    if (c.net && c.top === 'klapp') {
-      lidDX = G.oX + 2 * c.ps; lidDZ = G.oZ + 2 * c.ps;
-      laths.push({ label: 'Deckelrahmen vorne/hinten', len: lidDX, qty: 2 });
-      laths.push({ label: 'Deckelrahmen seitlich', len: lidDZ - 2 * c.lw, qty: 2 });
-    }
+    screws += 4 * 4 + 4 * 2 * 2;
   }
-
-  // ---------- Netz ----------
-  let netArea = 0, netEdge = 0;
   if (c.net) {
     const hh = c.cageH - c.lw;
     const add = (w, h) => { netArea += w * h; netEdge += 2 * (w + h); };
-    add(G.oX, hh); add(G.oZ, hh); add(G.oZ, hh);
-    if (c.front === 'netz') add(G.oX, hh);
-    else for (let i = 0; i < doorLeaf.leaves; i++) add(doorLeaf.w - 2 * c.lw, doorLeaf.h - 2 * c.lw);
-    if (c.top === 'fest') add(G.oX + 2 * c.ps, G.oZ + 2 * c.ps);
-    if (c.top === 'klapp') add(lidDX - 2 * c.lw, lidDZ - 2 * c.lw);
+    add(G.oX, hh); add(G.oZ, hh); add(G.oZ, hh); // hinten, links, rechts
+    frontP = FRONTS[c.front].parts(c, G);
+    topP = TOPS[c.top].parts(c, G);
+    [frontP, topP].forEach(p => {
+      laths.push(...(p.laths || []));
+      hw.push(...(p.hw || []));
+      (p.net || []).forEach(n => { netArea += n.a; netEdge += n.e; });
+      hinges += p.hinges || 0; screws += p.screws || 0;
+      (p.warn || []).forEach(w => warn.push(w));
+    });
   }
   const netM2 = netArea / 10000 * 1.15;
+  if (hinges) hw.unshift({ label: 'Scharniere (verzinkt, ca. 40–50 mm)', qty: hinges, unit: 'Stk' });
 
-  // ---------- Beschläge & Kleinteile ----------
-  const hw = [];
-  let hinges = 0;
-  if (c.net && c.top === 'klapp') hinges += lidDX > 150 ? 3 : 2;
-  if (doorLeaf) hinges += 2 * doorLeaf.leaves;
-  if (hinges) hw.push({ label: 'Scharniere (verzinkt, ca. 40–50 mm)', qty: hinges, unit: 'Stk' });
-  let chainLen = 0;
-  if (c.net && c.top === 'klapp' && c.chain) {
-    const d = lidDZ * 0.4, a = 100 * Math.PI / 180;
-    const p = [d * Math.cos(a), d * Math.sin(a)], q = [-c.ps / 2, -(c.lw + 12)];
-    chainLen = Math.ceil(Math.hypot(p[0] - q[0], p[1] - q[1]) + 5);
-    hw.push({ label: `Kette ${chainLen} cm + 4 Schraubösen`, qty: 2, unit: 'Stk' });
-  }
-  if (doorLeaf) hw.push({ label: doorLeaf.leaves === 2 ? 'Riegel / Schubriegel für Doppeltür' : 'Riegel / Haken für Tür', qty: 1, unit: 'Stk' });
-  if (c.net && c.top === 'klapp') hw.push({ label: 'Haken / Vorreiber für Deckel', qty: 1, unit: 'Stk' });
-
-  let screws = 4; // Außenecken des Kastens
-  if (c.posts) screws += 4 * 4 + 4 * 2 * 2;
-  if (c.net && c.top === 'klapp') screws += 8;
-  if (doorLeaf) screws += 8 * doorLeaf.leaves + (doorLeaf.leaves === 2 ? 4 : 0);
   hw.push({ label: 'Holzschrauben 4×40 (Edelstahl/verzinkt)', qty: Math.ceil(screws * 1.2 / 10) * 10, unit: 'Stk' });
   if (hinges) hw.push({ label: 'Holzschrauben 3,5×16 für Beschläge', qty: Math.ceil((hinges * 6 + 12) / 10) * 10, unit: 'Stk' });
   if (c.net) hw.push({ label: `${NET_TYPES[c.netType].fix.split(' ')[0]} (alle ~5 cm)`, qty: Math.ceil(netEdge / 5 / 50) * 50, unit: 'Stk' });
@@ -230,6 +212,9 @@ export function compute(cfg) {
   });
   ground.push({ label: 'Noppenfolie für die Innenwände', qty: m2(2 * (G.iX + G.iZ), c.h), unit: 'm²', note: 'schützt das Holz vor nasser Erde' });
   const weight = Math.round(soilL * 1.3 + drainL * 0.5);
+  const soilDepth = c.h - c.soilGap - drain;
+  const plants = rate(c, soilDepth, roofExtra(c));
+  const plan = makePlan(c, plants);
   if (!gr.soft && cfg.postGround > 0) warn.push('Auf festem Untergrund können die Pfosten nicht in den Boden. „Pfosten in den Boden“ wird ignoriert.');
   if (c.ground === 'holz') warn.push(`Gefüllt und nass wiegt der Kasten ca. ${weight} kg. Bei Balkonen unbedingt die Traglast prüfen.`);
   if (gr.layers.includes('drainage') && drain < c.drain) warn.push(`Der Kasten ist zu flach für ${fmt(c.drain)} cm Drainage. Es bleiben nur ${fmt(drain)} cm.`);
@@ -240,12 +225,11 @@ export function compute(cfg) {
   if (c.posts && c.ov === 0) warn.push('Ohne Überstand gibt es keine Ecke, in die der Pfosten passt. Stell mindestens ein paar cm Überstand ein.');
   if (c.h / c.t > 15) warn.push('Sehr hohe, dünne Bretter: Ab etwa 30 cm Höhe drückt die Erde die Wände stark nach außen. Dickere Bretter oder eine Mittelstrebe einplanen.');
   if (c.net && c.mesh > 3 && c.netType === 'vogelschutz') warn.push('Maschen über 3 cm halten kleine Vögel nicht zuverlässig ab.');
-  if (doorLeaf && doorLeaf.w > 80) warn.push(`Türflügel sind ${fmt(doorLeaf.w)} cm breit, das hängt leicht durch. Eine Diagonalstrebe pro Flügel hilft.`);
 
   return {
-    G, c, warn, boardTypes, laths, hw, doorLeaf, lidDX, lidDZ, chainLen,
-    netM2, soilL, drainL, drain, ground, weight, diag, boardM, boardCut, lathCut, postCut,
-    steps: instructions(G, c, { boardTypes, doorLeaf, soilL, diag, netM2, lidDX, ground, drain }),
+    G, c, warn, boardTypes, laths, hw, frontP, topP, roof: roofExtra(c),
+    netM2, soilL, drainL, drain, ground, weight, diag, plants, plan, soilDepth, boardM, boardCut, lathCut, postCut,
+    steps: instructions(G, c, { boardTypes, frontP, topP, soilL, diag, netM2, ground, drain }),
   };
 }
 
@@ -271,11 +255,8 @@ function instructions(G, c, d) {
   if (c.net) {
     const nt = NET_TYPES[c.netType];
     S.push({ t: 'Netz anbringen', d: `${nt.name}, Maschenweite ca. ${fmt(c.mesh)} cm, insgesamt ca. ${fmt(d.netM2)} m² inkl. 15 % Zugabe. Hinten und an den Seiten${c.front === 'netz' ? ', vorne' : ''}${c.top === 'fest' ? ' und oben' : ''} straff spannen und mit ${nt.fix} befestigen. Unten an der Oberkante der Kastenbretter, oben an den Querlatten.` });
-    if (d.doorLeaf) {
-      const L = d.doorLeaf;
-      S.push({ t: L.leaves === 2 ? 'Doppeltür bauen' : 'Tür bauen', d: `${L.leaves === 2 ? 'Zwei Rahmen' : 'Einen Rahmen'} ${fmt(L.w)}×${fmt(L.h)} cm aus Latten bauen (Ecken verschrauben), Netz innen bespannen. ${L.leaves === 2 ? 'Jeder Flügel bekommt 2 Scharniere am vorderen Pfosten. An einen Flügel innen die Schlagleiste schrauben, sodass sie über den Mittelspalt ragt, an den anderen den Riegel.' : '2 Scharniere am linken Pfosten, Riegel rechts.'} Oben schlägt die Tür gegen die vordere Querlatte.` });
-    }
-    if (c.top === 'klapp') S.push({ t: 'Klappdeckel', d: `Rahmen ${fmt(d.lidDX)}×${fmt(G.oZ + 2 * c.ps)} cm aus Latten bauen und bespannen. Mit ${d.lidDX > 150 ? 3 : 2} Scharnieren an der hinteren Querlatte befestigen.${c.chain ? ' Links und rechts eine Kette vom Deckel zum hinteren Pfosten, damit er offen nicht nach hinten kippt.' : ''} Vorne ein Haken, damit Wind ihn nicht aufreißt.` });
+    if (d.frontP && d.frontP.step) S.push(d.frontP.step);
+    if (d.topP && d.topP.step) S.push(d.topP.step);
   }
   const gr = GROUNDS[c.ground];
   S.push({ t: `Untergrund vorbereiten (${gr.name})`, d: 'Sonnigen Platz wählen. ' + gr.prep });
@@ -296,7 +277,7 @@ export function toText(R) {
   const L = [];
   const c = R.c;
   L.push(`Square-Foot-Kasten ${c.nx}×${c.nz} Felder à ${fmt(c.cell)} cm`);
-  L.push(`Grundfläche ${fmt(R.G.footX)} × ${fmt(R.G.footZ)} cm, Höhe ${fmt(c.posts ? R.G.postLen - c.postGround : c.h)} cm`);
+  L.push(`Grundfläche ${fmt(R.G.footX)} × ${fmt(R.G.footZ)} cm, Höhe ${fmt(c.posts ? R.G.postLen - c.postGround + R.roof : c.h)} cm`);
   L.push('', 'MATERIALLISTE');
   R.boardTypes.forEach(b => L.push(`- ${b.qty}× ${b.label}: ${fmt(b.len)} × ${fmt(c.h)} × ${fmt(c.t)} cm`));
   L.push(`  -> ${R.boardCut.bars.length} Rohbretter à ${fmt(c.stock)} cm`);
@@ -306,7 +287,9 @@ export function toText(R) {
   R.hw.forEach(h => L.push(`- ${h.qty} ${h.unit} ${h.label}`));
   L.push(`- Erde: ca. ${Math.round(R.soilL)} l`);
   L.push('', `UNTERGRUND: ${GROUNDS[c.ground].name}`);
-  R.ground.forEach(g => L.push(`- ${g.qty} ${g.unit} ${g.label} (${g.note})`));
+  R.ground.forEach(g => L.push(`- ${String(g.qty).replace('.', ',')} ${g.unit} ${g.label} (${g.note})`));
+  L.push('', 'PFLANZPLAN (oben = hinten, unten = vorne)');
+  R.plan.forEach(row => L.push(row.map(p => (p ? `${p.name} (${p.per})` : '–')).join(' | ')));
   L.push('', 'ZUSCHNITT / KERBEN');
   R.boardTypes.forEach(b => L.push(`${b.label} (${fmt(b.len)} cm): Kerben ${fmt(c.t + c.play)} breit, ${fmt(c.h / 2)} tief ab ` + b.notches.map(n => fmt(n.from)).join(', ') + ' cm'));
   L.push('', 'BAUANLEITUNG');

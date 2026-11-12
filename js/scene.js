@@ -95,12 +95,161 @@ export class KastenScene {
     this.mesh(g, sph, M.metal, dir > 0 ? w - 3 : -w + 3, h / 2, lt, 1.2, 1.2, 1.2);
   }
 
+  // Rahmen aus Latten mit Netz, senkrecht in der XY-Ebene (z = 0)
+  vFrame(g, x0, x1, y0, y1, c, netMat, mesh) {
+    const lw = c.lw, lt = c.lt, w = x1 - x0, h = y1 - y0, cx = (x0 + x1) / 2;
+    this.box(g, M.lath, w, lw, lt, cx, y0 + lw / 2, 0); this.box(g, M.lath, w, lw, lt, cx, y1 - lw / 2, 0);
+    this.box(g, M.lath, lw, h - 2 * lw, lt, x0 + lw / 2, (y0 + y1) / 2, 0); this.box(g, M.lath, lw, h - 2 * lw, lt, x1 - lw / 2, (y0 + y1) / 2, 0);
+    this.netPanel(g, v(x0 + lw, y0 + lw, 0), v(x1 - lw, y1 - lw, 0), mesh, netMat, 'z');
+  }
+  // Rahmen aus Latten mit Netz, waagerecht in der XZ-Ebene (y = 0)
+  hFrame(g, x0, x1, z0, z1, c, netMat, mesh) {
+    const lw = c.lw, lt = c.lt, w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    this.box(g, M.lath, w, lt, lw, cx, lt / 2, z0 + lw / 2); this.box(g, M.lath, w, lt, lw, cx, lt / 2, z1 - lw / 2);
+    this.box(g, M.lath, lw, lt, d - 2 * lw, x0 + lw / 2, lt / 2, cz); this.box(g, M.lath, lw, lt, d - 2 * lw, x1 - lw / 2, lt / 2, cz);
+    this.netPanel(g, v(x0 + lw, lt, z0 + lw), v(x1 - lw, lt, z1 - lw), mesh, netMat, 'y');
+  }
+  hinge(g, x, y, z, axis) {
+    const m = this.mesh(g, hingeGeo, M.metal, x, y, z);
+    if (axis === 'x') m.rotation.z = Math.PI / 2;
+    if (axis === 'z') m.rotation.x = Math.PI / 2;
+  }
+  // Latte zwischen zwei Punkten
+  beam(g, a, b, c) {
+    const len = a.distanceTo(b), me = this.box(g, M.lath, c.lw, len, c.lt, 0, 0, 0);
+    me.position.copy(a.clone().add(b).multiplyScalar(0.5));
+    me.quaternion.setFromUnitVectors(v(0, 1, 0), b.clone().sub(a).normalize());
+  }
+
+  buildFront(ng, R, c, G, geo, netMat, mesh) {
+    const { rx, yb, ytn, az } = geo, F = R.frontP, mv = this.movers;
+    if (c.front === 'netz') { this.netPanel(ng, v(-rx / 2, yb, az), v(rx / 2, ytn, az), mesh, netMat, 'z'); return; }
+    const L = F.leaf;
+    if (c.front === 'doppeltuer' || c.front === 'tuer') {
+      const l = new THREE.Group(); l.position.set(-rx / 2, yb, az); ng.add(l); this.leaf(l, L.w, L.h, 1, c, netMat, mesh);
+      mv.push({ k: 'front', f: t => { l.rotation.y = -t * 1.6; } });
+      if (L.leaves === 2) {
+        const r = new THREE.Group(); r.position.set(rx / 2, yb, az); ng.add(r); this.leaf(r, L.w, L.h, -1, c, netMat, mesh);
+        mv.push({ k: 'front', f: t => { r.rotation.y = t * 1.6; } });
+      }
+    }
+    if (c.front === 'klapptuer') {
+      const g = new THREE.Group(); g.position.set(0, yb + L.h, az + c.lt); ng.add(g);
+      this.vFrame(g, -L.w / 2, L.w / 2, -L.h, 0, c, netMat, mesh);
+      [-0.3, 0.3].forEach(k => this.hinge(g, k * L.w, 0, 0, 'x'));
+      mv.push({ k: 'front', f: t => { g.rotation.x = -t * 1.35; } });
+    }
+    if (c.front === 'schiebetuer') {
+      this.netPanel(ng, v(-rx / 2, yb, az), v(0, ytn, az), mesh, netMat, 'z');
+      [yb + 0.5, ytn - 0.5].forEach(y => this.box(ng, M.lath, rx, 1, c.lt, 0, y, az + c.lt * 1.8));
+      const g = new THREE.Group(); g.position.set(rx / 2 - L.w, yb, az + c.lt); ng.add(g);
+      this.vFrame(g, 0, L.w, 0, L.h, c, netMat, mesh);
+      this.mesh(g, sph, M.metal, 4, L.h / 2, c.lt, 1.3, 1.3, 1.3);
+      const x0 = rx / 2 - L.w;
+      mv.push({ k: 'front', f: t => { g.position.x = x0 - t * (L.w - 4); } });
+    }
+    if (c.front === 'rollo') {
+      const g = new THREE.Group(); g.position.set(0, ytn, az + 0.6); ng.add(g);
+      const P = [], nu = Math.round(rx / mesh), nv = 14;
+      for (let i = 0; i <= nu; i++) { const x = -rx / 2 + i * rx / nu; P.push(v(x, 0, 0), v(x, -1, 0)); }
+      for (let j = 0; j <= nv; j++) P.push(v(-rx / 2, -j / nv, 0), v(rx / 2, -j / nv, 0));
+      this.lines(g, P, netMat);
+      const rod = this.mesh(ng, cyl, M.lath, 0, yb, az + 1.5, 1.4, rx, 1.4); rod.rotation.z = Math.PI / 2;
+      const H0 = L.h;
+      mv.push({ k: 'front', f: t => { const h = Math.max(3, H0 * (1 - t * 0.94)); g.scale.y = h; rod.position.y = ytn - h; rod.scale.x = 1.4 + t * 2.5; rod.scale.z = 1.4 + t * 2.5; } });
+    }
+  }
+
+  buildTop(ng, R, c, G, geo, netMat, mesh) {
+    const { ax, az, yt } = geo, T = R.topP, mv = this.movers, lw = c.lw;
+    const DX = 2 * ax + c.ps, DZ = 2 * az + c.ps;
+    if (c.top === 'offen') return;
+    if (c.top === 'fest') { this.netPanel(ng, v(-DX / 2, yt, -DZ / 2), v(DX / 2, yt, DZ / 2), mesh, netMat, 'y'); return; }
+    if (c.top === 'klapp') {
+      const lid = new THREE.Group(); lid.position.set(0, yt, -DZ / 2); ng.add(lid);
+      this.hFrame(lid, -DX / 2, DX / 2, 0, DZ, c, netMat, mesh);
+      const nh = DX > 150 ? 3 : 2;
+      for (let k = 0; k < nh; k++) this.hinge(ng, -DX * 0.3 + k * (DX * 0.6) / (nh - 1), yt, -DZ / 2, 'x');
+      const chains = [];
+      if (c.chain) [-1, 1].forEach(sx => {
+        const cl = new THREE.Line(new THREE.BufferGeometry().setFromPoints([v(0, 0, 0), v(0, 0, 0)]), chainMat);
+        ng.add(cl); chains.push({ cl, a: v(sx * (DX / 2 - lw / 2), 0, DZ * 0.4), b: v(sx * ax, yt - lw - 12, -az - c.ps / 2 - 0.2) });
+      });
+      mv.push({ k: 'top', f: t => {
+        lid.rotation.x = -t * 1.75; lid.updateMatrixWorld();
+        chains.forEach(ch => {
+          ch.cl.visible = t > 0.25;
+          const p = ch.a.clone(); lid.localToWorld(p); ng.worldToLocal(p);
+          const ar = ch.cl.geometry.attributes.position; ar.setXYZ(0, p.x, p.y, p.z); ar.setXYZ(1, ch.b.x, ch.b.y, ch.b.z); ar.needsUpdate = true;
+        });
+      } });
+    }
+    if (c.top === 'klapp2') {
+      const w = T.lid.w;
+      [-1, 1].forEach(sx => {
+        const g = new THREE.Group(); g.position.set(sx * DX / 2, yt, 0); ng.add(g);
+        if (sx < 0) this.hFrame(g, 0, w, -DZ / 2, DZ / 2, c, netMat, mesh); else this.hFrame(g, -w, 0, -DZ / 2, DZ / 2, c, netMat, mesh);
+        [-0.3, 0.3].forEach(k => this.hinge(ng, sx * DX / 2, yt, k * DZ, 'z'));
+        mv.push({ k: 'top', f: t => { g.rotation.z = -sx * t * 1.6; } });
+      });
+    }
+    if (c.top === 'schiebe') {
+      const d = T.lid.d, raise = c.lt + 0.6;
+      const back = new THREE.Group(); back.position.set(0, yt + raise, 0); ng.add(back);
+      this.hFrame(back, -DX / 2, DX / 2, -DZ / 2, -DZ / 2 + d, c, netMat, mesh);
+      [-1, 1].forEach(sx => this.box(ng, M.lath, lw, raise, d, sx * (DX / 2 - lw / 2), yt + raise / 2, -DZ / 2 + d / 2));
+      const front = new THREE.Group(); front.position.set(0, yt, 0); ng.add(front);
+      this.hFrame(front, -DX / 2 + lw + 0.3, DX / 2 - lw - 0.3, DZ / 2 - d, DZ / 2, c, netMat, mesh);
+      this.mesh(front, sph, M.metal, 0, c.lt + 1, DZ / 2 - 4, 1.3, 1.3, 1.3);
+      mv.push({ k: 'top', f: t => { front.position.z = -t * (d - 4); } });
+    }
+    if (c.top === 'sattel') {
+      const { rh, s } = T.lid, al = Math.atan2(rh, DZ / 2), yr = yt + rh;
+      [-1, 1].forEach(sx => {
+        const x = sx * (DX / 2 - lw / 2);
+        this.beam(ng, v(x, yt, -DZ / 2), v(x, yr, 0), c); this.beam(ng, v(x, yt, DZ / 2), v(x, yr, 0), c);
+        // Giebeldreieck mit Netz
+        const P = [], nz = Math.round(DZ / mesh);
+        for (let i = 1; i < nz; i++) { const z = -DZ / 2 + i * DZ / nz, top = yt + rh * (1 - Math.abs(z) / (DZ / 2)); P.push(v(x, yt, z), v(x, top, z)); }
+        const ny = Math.round(rh / mesh);
+        for (let j = 1; j < ny; j++) { const y = yt + j * rh / ny, half = DZ / 2 * (1 - j / ny); P.push(v(x, y, -half), v(x, y, half)); }
+        this.lines(ng, P, netMat);
+      });
+      this.box(ng, M.lath, DX, lw, c.lt, 0, yr - lw / 2, 0);
+      const backG = new THREE.Group(); backG.position.set(0, yr, 0); backG.rotation.x = -al; ng.add(backG);
+      this.netPanel(backG, v(-DX / 2, 0, -s), v(DX / 2, 0, 0), mesh, netMat, 'y');
+      const flap = new THREE.Group(); flap.position.set(0, yr, 0); ng.add(flap);
+      this.hFrame(flap, -DX / 2, DX / 2, 0, s, c, netMat, mesh);
+      const nh = DX > 150 ? 3 : 2;
+      for (let k = 0; k < nh; k++) this.hinge(ng, -DX * 0.3 + k * (DX * 0.6) / (nh - 1), yr, 0, 'x');
+      mv.push({ k: 'top', f: t => { flap.rotation.x = al - t * (al + 1.25); } });
+    }
+    if (c.top === 'tunnel') {
+      const { rh, n } = T.lid, a = DZ / 2;
+      const pt = (x, u) => { const ang = Math.PI * u; return v(x, yt + rh * Math.sin(ang), -a * Math.cos(ang)); };
+      for (let k = 0; k < n; k++) {
+        const x = -DX / 2 + lw + k * (DX - 2 * lw) / (n - 1), pts = [];
+        for (let j = 0; j <= 24; j++) pts.push(pt(x, j / 24));
+        ng.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, 1, 8, false), L(0x3d3d3d)));
+      }
+      this.box(ng, M.lath, DX, c.lt, lw, 0, yt + rh + c.lt / 2 + 1, 0);
+      const P = [], nu = Math.round(DX / mesh), nv = Math.round(Math.PI * Math.hypot(a, rh) / 1.4 / mesh);
+      for (let i = 0; i <= nu; i++) { const x = -DX / 2 + i * DX / nu; for (let j = 0; j < nv; j++) P.push(pt(x, j / nv), pt(x, (j + 1) / nv)); }
+      for (let j = 0; j <= nv; j++) P.push(pt(-DX / 2, j / nv), pt(DX / 2, j / nv));
+      [-DX / 2, DX / 2].forEach(x => {
+        const nz = Math.round(DZ / mesh);
+        for (let i = 1; i < nz; i++) { const z = -a + i * DZ / nz, top = yt + rh * Math.sqrt(Math.max(0, 1 - (z / a) ** 2)); P.push(v(x, yt, z), v(x, top, z)); }
+      });
+      this.lines(ng, P, netMat);
+    }
+  }
+
   update(R) {
     const { G, c } = R;
     this.root.traverse(o => { if (o.isCSS2DObject && o.element.parentNode) o.element.parentNode.removeChild(o.element); });
     this.scene.remove(this.root);
     this.root = new THREE.Group(); this.scene.add(this.root);
-    this.parts = {}; this.chains = [];
+    this.parts = {}; this.movers = [];
     const H = c.h, y0 = -H / 2, t = c.t;
     const netMat = new THREE.LineBasicMaterial({ color: NET_TYPES[c.netType].color, transparent: true, opacity: 0.55 });
     const mesh = Math.max(c.mesh, 3); // Darstellung: sehr feine Netze gröber zeichnen
@@ -192,17 +341,17 @@ export class KastenScene {
     const ys = H / 2 - c.soilGap, ps = c.cell / 30;
     if (c.grid === 'bretter') {
       G.cellsX.forEach((x, i) => G.cellsZ.forEach((z, j) => {
-        this.plant(pg, (i * 3 + j * 5 + i * j) % 4, x, ys, z, ps);
+        const pl = R.plan[j] && R.plan[j][i]; if (pl) this.plant(pg, pl.look, x, ys, z, ps);
       }));
     } else {
-      G.cellsX.forEach((x, i) => G.cellsZ.forEach((z, j) => this.plant(pg, (i * 3 + j * 5 + i * j) % 4, x, ys, z, ps)));
+      G.cellsX.forEach((x, i) => G.cellsZ.forEach((z, j) => { const pl = R.plan[j] && R.plan[j][i]; if (pl) this.plant(pg, pl.look, x, ys, z, ps); }));
     }
 
     // ---- Pfosten, Latten, Netz ----
     let topY = H / 2;
     if (c.posts) {
       const ax = G.ax, az = G.az, PH = c.h + c.cageH, yt = y0 + PH, yb = H / 2, yGround = y0 - c.postGround;
-      topY = yt;
+      topY = yt + R.roof;
       [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => this.box(this.root, M.post, c.ps, PH + c.postGround, c.ps, sx * ax, (yt + yGround) / 2, sz * az));
       const ng = new THREE.Group(); this.root.add(ng); this.parts.ng = ng;
       const rx = G.oX, rz = G.oZ, lw = c.lw, lt = c.lt;
@@ -215,36 +364,9 @@ export class KastenScene {
         this.netPanel(ng, v(-rx / 2, yb, -az), v(rx / 2, ytn, -az), mesh, netMat, 'z');
         this.netPanel(ng, v(ax, yb, -rz / 2), v(ax, ytn, rz / 2), mesh, netMat, 'x');
         this.netPanel(ng, v(-ax, yb, -rz / 2), v(-ax, ytn, rz / 2), mesh, netMat, 'x');
-        if (c.front === 'netz') this.netPanel(ng, v(-rx / 2, yb, az), v(rx / 2, ytn, az), mesh, netMat, 'z');
-        else if (R.doorLeaf) {
-          const DL = R.doorLeaf;
-          const l = new THREE.Group(); l.position.set(-rx / 2, yb, az); ng.add(l); this.leaf(l, DL.w, DL.h, 1, c, netMat, mesh);
-          this.parts.doors = [{ g: l, s: -1 }];
-          if (DL.leaves === 2) {
-            const r = new THREE.Group(); r.position.set(rx / 2, yb, az); ng.add(r); this.leaf(r, DL.w, DL.h, -1, c, netMat, mesh);
-            this.parts.doors.push({ g: r, s: 1 });
-          }
-        }
-        if (c.top === 'fest') this.netPanel(ng, v(-ax - c.ps / 2, yt, -az - c.ps / 2), v(ax + c.ps / 2, yt, az + c.ps / 2), mesh, netMat, 'y');
-        if (c.top === 'klapp') {
-          const DX = R.lidDX, DZ = R.lidDZ;
-          const lid = new THREE.Group(); lid.position.set(0, yt, -DZ / 2); ng.add(lid); this.parts.lid = lid;
-          this.box(lid, M.lath, DX, lt, lw, 0, lt / 2, lw / 2);
-          this.box(lid, M.lath, DX, lt, lw, 0, lt / 2, DZ - lw / 2);
-          this.box(lid, M.lath, lw, lt, DZ - 2 * lw, -DX / 2 + lw / 2, lt / 2, DZ / 2);
-          this.box(lid, M.lath, lw, lt, DZ - 2 * lw, DX / 2 - lw / 2, lt / 2, DZ / 2);
-          this.netPanel(lid, v(-DX / 2 + lw, lt, lw), v(DX / 2 - lw, lt, DZ - lw), mesh, netMat, 'y');
-          const nh = DX > 150 ? 3 : 2;
-          for (let k = 0; k < nh; k++) {
-            const x = -DX * 0.3 + k * (DX * 0.6) / (nh - 1);
-            const hm = this.mesh(ng, hingeGeo, M.metal, x, yt, -DZ / 2); hm.rotation.z = Math.PI / 2;
-          }
-          if (c.chain) [-1, 1].forEach(s => {
-            const cl = new THREE.Line(new THREE.BufferGeometry().setFromPoints([v(0, 0, 0), v(0, 0, 0)]), chainMat);
-            ng.add(cl);
-            this.chains.push({ cl, a: v(s * (DX / 2 - lw / 2), 0, DZ * 0.4), b: v(s * ax, yt - lw - 12, -az - c.ps / 2 - 0.2) });
-          });
-        }
+        const geo = { rx, yb, ytn, az, ax, yt };
+        this.buildFront(ng, R, c, G, geo, netMat, mesh);
+        this.buildTop(ng, R, c, G, geo, netMat, mesh);
       }
     }
 
@@ -277,8 +399,8 @@ export class KastenScene {
   tick() {
     const A = this.anim, V = this.view, P = this.parts || {};
     A.ex += ((V.explode ? 1 : 0) - A.ex) * 0.12;
-    A.lid += ((V.lid ? 1.75 : 0) - A.lid) * 0.08;
-    A.door += ((V.doors ? 1.6 : 0) - A.door) * 0.08;
+    A.lid += ((V.lid ? 1 : 0) - A.lid) * 0.08;
+    A.door += ((V.doors ? 1 : 0) - A.door) * 0.08;
     const off = A.ex < 0.05;
     if (P.xg) P.xg.position.y = A.ex * this.H * 1.1;
     if (P.ng) P.ng.visible = V.net && off;
@@ -298,16 +420,7 @@ export class KastenScene {
       this.controls.target.y += dUp; this.cam.position.y += dUp; this.cam.position.addScaledVector(dir, dBack);
       this.lastUp = up; this.lastBack = back;
     }
-    if (P.lid) {
-      P.lid.rotation.x = -A.lid; P.lid.updateMatrixWorld();
-      (this.chains || []).forEach(ch => {
-        ch.cl.visible = A.lid > 0.4;
-        const p = ch.a.clone(); P.lid.localToWorld(p); P.ng.worldToLocal(p);
-        const ar = ch.cl.geometry.attributes.position;
-        ar.setXYZ(0, p.x, p.y, p.z); ar.setXYZ(1, ch.b.x, ch.b.y, ch.b.z); ar.needsUpdate = true;
-      });
-    }
-    (P.doors || []).forEach(d => { d.g.rotation.y = d.s * A.door; });
+    (this.movers || []).forEach(m => m.f(m.k === 'top' ? A.lid : A.door));
     this.controls.update();
     this.renderer.render(this.scene, this.cam);
     this.labels.render(this.scene, this.cam);

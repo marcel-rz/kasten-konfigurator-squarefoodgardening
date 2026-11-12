@@ -1,5 +1,7 @@
 import { DEFAULTS, NET_TYPES, GROUNDS, compute, sanitize, fmt, toText, toCSV } from './calc.js';
 import { KastenScene } from './scene.js';
+import { FRONTS, TOPS } from './options.js';
+import { NOT_SUITABLE } from './plants.js';
 
 // ---------- Formular-Schema ----------
 const SCHEMA = [
@@ -26,9 +28,10 @@ const SCHEMA = [
     ['net', 'Netz', 'checkbox'],
     ['netType', 'Netzart', 'select', { options: Object.fromEntries(Object.entries(NET_TYPES).map(([k, v]) => [k, v.name])) }],
     ['mesh', 'Maschenweite', 'number', { min: 0.5, max: 10, step: 0.1 }],
-    ['top', 'Oben', 'select', { options: { klapp: 'Klappdeckel', fest: 'Netz fest', offen: 'Offen' } }],
+    ['top', 'Dach', 'select', { options: Object.fromEntries(Object.entries(TOPS).map(([k, v]) => [k, v.name])) }],
+    ['roofH', 'Firsthöhe', 'number', { min: 10, max: 100, step: 5, hint: 'Sattel- und Bogendach' }],
     ['chain', 'Haltekette am Deckel', 'checkbox'],
-    ['front', 'Vorderseite', 'select', { options: { doppeltuer: 'Doppeltür', tuer: 'Einzeltür', netz: 'Netz fest' } }],
+    ['front', 'Vorderseite', 'select', { options: Object.fromEntries(Object.entries(FRONTS).map(([k, v]) => [k, v.name])) }],
   ]},
   { title: 'Untergrund', fields: [
     ['ground', 'Worauf steht der Kasten?', 'select', { options: Object.fromEntries(Object.entries(GROUNDS).map(([k, v]) => [k, v.name])) }],
@@ -91,6 +94,7 @@ function syncDisabled() {
   f.elements.drain.disabled = !GROUNDS[c.ground].layers.includes('drainage');
   ['netType', 'mesh', 'top', 'front'].forEach(k => f.elements[k].disabled = !c.net);
   f.elements.chain.disabled = !(c.net && c.top === 'klapp');
+  f.elements.roofH.disabled = !(c.net && (c.top === 'sattel' || c.top === 'tunnel'));
 }
 
 let timer;
@@ -98,7 +102,7 @@ function schedule() { clearTimeout(timer); timer = setTimeout(render, 120); }
 
 // ---------- 3D ----------
 const scene = new KastenScene($('#viewer'));
-const VIEW_BTNS = [['explode', 'Explosion'], ['plants', 'Erde und Pflanzen'], ['lid', 'Deckel öffnen'], ['doors', 'Türen öffnen'], ['net', 'Netz anzeigen']];
+const VIEW_BTNS = [['explode', 'Explosion'], ['plants', 'Erde und Pflanzen'], ['lid', 'Dach öffnen'], ['doors', 'Vorne öffnen'], ['net', 'Netz anzeigen']];
 function buildToolbar() {
   $('#toolbar').innerHTML = `<button type="button" id="big">Großansicht</button>` + VIEW_BTNS.map(([k, t]) => `<button type="button" data-v="${k}">${t}</button>`).join('');
   $('#toolbar').onclick = e => {
@@ -120,7 +124,7 @@ function markToolbar(c = sanitize(cfg)) {
   document.querySelectorAll('#toolbar button').forEach(b => {
     const k = b.dataset.v;
     b.classList.toggle('on', !!scene.view[k]);
-    b.hidden = (k === 'lid' && !(c.net && c.top === 'klapp')) || (k === 'doors' && !(c.net && c.front !== 'netz')) || (k === 'net' && !c.posts);
+    b.hidden = (k === 'lid' && !(c.net && TOPS[c.top].movable)) || (k === 'doors' && !(c.net && FRONTS[c.front].movable)) || (k === 'net' && !c.posts);
   });
 }
 
@@ -154,6 +158,32 @@ function boardSVG(b, c) {
   </svg>`;
 }
 
+const STATUS = { gut: ['Gut geeignet', 'ok'], knapp: ['Geht, aber knapp', 'mid'], nein: ['Ungeeignet', 'no'] };
+function plantsHTML(R) {
+  const c = R.c, opts = R.plants;
+  const cell = (p, i, j) => `<label class="pcell ${p ? STATUS[p.status][1] : ''}"><span>${p ? p.per + '×' : ''}</span>
+    <select data-cell="${i},${j}" aria-label="Feld ${i + 1}, Reihe ${j + 1}">
+      <option value="-"${p ? '' : ' selected'}>leer</option>
+      ${opts.filter(o => o.cellsNeeded === 1).map(o => `<option value="${o.k}"${p && p.k === o.k ? ' selected' : ''}>${esc(o.name)}${o.status === 'nein' ? ' (ungeeignet)' : ''}</option>`).join('')}
+    </select></label>`;
+  const grid = `<div class="planwrap"><div class="plan-lbl">hinten</div>
+    <div id="plan" class="plan" style="grid-template-columns:repeat(${c.nx}, minmax(92px, 130px))">
+    ${R.plan.map((row, j) => row.map((p, i) => cell(p, i, j)).join('')).join('')}</div>
+    <div class="plan-lbl">vorne${c.posts && c.net && FRONTS[c.front].movable ? ' (Tür)' : ''}</div></div>`;
+  const rows = ['gut', 'knapp', 'nein'].flatMap(st => opts.filter(p => p.status === st).map(p => `<tr>
+    <td><b>${esc(p.name)}</b><br><span class="muted">${esc(p.note)}</span></td>
+    <td class="num">${p.cellsNeeded > 1 ? `1 auf ${p.cellsNeeded} Feldern` : p.per + ' pro Feld'}</td>
+    <td class="num">${p.depth} cm</td><td class="num">${p.height} cm</td><td>${esc(p.when)}</td>
+    <td><span class="badge ${STATUS[st][1]}">${STATUS[st][0]}</span>${p.why.length ? `<br><span class="muted">${esc(p.why.join(', '))}</span>` : ''}</td></tr>`)).join('');
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">Pflanzen</h2><button type="button" id="plan-reset">Vorschlag wiederherstellen</button></div>
+    <p style="font-size:14px;color:var(--muted);margin:6px 0 10px">Bei dir sind ${Math.round(R.soilDepth)} cm Erde im Kasten. Der Pflanzplan setzt hohe Pflanzen nach hinten, damit sie den kleinen keine Sonne wegnehmen (hinten = Norden). Tipp ein Feld an, um es zu ändern. Die Zahl ist die Anzahl Pflanzen pro Feld.</p>
+    ${grid}
+    <div style="overflow-x:auto;margin-top:14px"><table class="ptable"><thead><tr><th>Pflanze</th><th>Menge</th><th>Erde</th><th>Höhe</th><th>Wann</th><th>Eignung</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p style="font-size:13px;color:var(--muted);margin:10px 0 0">${esc(NOT_SUITABLE)} Ab Mitte Mai (nach den Eisheiligen) ist es frostfrei.</p>
+  </div>`;
+}
+
 function barsHTML(plan, stock) {
   const groups = new Map();
   plan.bars.forEach(b => { const k = b.parts.map(p => p.len).join('|'); const g = groups.get(k) || { bar: b, n: 0 }; g.n++; groups.set(k, g); });
@@ -169,7 +199,7 @@ function render() {
   try { localStorage.setItem('kasten-cfg', JSON.stringify(c)); } catch (e) { /* egal */ }
   scene.update(R);
   markToolbar(c);
-  const height = c.posts ? c.h + c.cageH : c.h;
+  const height = c.posts ? c.h + c.cageH + R.roof : c.h;
   $('#stats').innerHTML = [
     ['Grundfläche', `${fmt(G.footX)} × ${fmt(G.footZ)} cm`],
     ['Höhe', `${fmt(height)} cm`],
@@ -201,6 +231,7 @@ function render() {
       <tbody>${matRows.map(r => r[4] === true ? `<tr><th colspan="4" style="padding-top:14px;color:var(--ink)">${esc(r[1])}</th></tr>` : `<tr><td class="num">${esc(r[0])}</td><td>${esc(r[1])}</td><td class="num">${esc(r[2])}</td><td class="num">${esc(r[3])}</td></tr>`).join('')}</tbody></table>
       <p style="font-size:14px;margin:12px 0 0"><b>Einkaufen:</b> ${buy.map(esc).join(' · ')}</p>
     </div>
+    ${plantsHTML(R)}
     <div class="card">
       <h2>Zuschnitt und Kerben</h2>
       <p style="font-size:14px;color:var(--muted);margin:0">Maße sind der Kerbanfang, gemessen von der linken Brettkante.</p>
@@ -215,6 +246,10 @@ function render() {
     </div>`;
 
   $('#copy').onclick = () => copy(toText(R), 'Materialliste und Anleitung kopiert');
+  document.querySelectorAll('#plan select').forEach(sel => sel.onchange = () => {
+    cfg.plan = { ...(cfg.plan || {}), [sel.dataset.cell]: sel.value }; render();
+  });
+  $('#plan-reset').onclick = () => { cfg.plan = {}; render(); };
   $('#csv').onclick = () => {
     try {
       const a = document.createElement('a');
