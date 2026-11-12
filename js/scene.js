@@ -229,15 +229,19 @@ export class KastenScene {
     }
 
     // Kamera einmalig bzw. bei Größenänderung neu ausrichten
-    const span = Math.max(G.LX, G.LZ, topY - y0);
-    const key = `${Math.round(G.LX)}|${Math.round(G.LZ)}|${Math.round(topY)}`;
+    const gTop = topY;
+    const key = `${Math.round(G.LX)}|${Math.round(G.LZ)}|${Math.round(gTop)}|${this.cam.aspect.toFixed(2)}`;
     if (key !== this.camKey) {
       this.camKey = key;
-      const target = v(0, (topY + y0) / 2 * 0.6, 0);
-      const dir = this.firstFrame ? v(1, 0.85, 1.25).normalize() : this.cam.position.clone().sub(this.controls.target).normalize();
+      // Kamera so weit weg, dass die Bounding-Sphere ins Bild passt
+      const r = 0.5 * Math.hypot(G.LX, G.LZ, gTop - y0);
+      const vf = this.cam.fov * Math.PI / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * this.cam.aspect);
+      const k = this.cam.aspect >= 1.3 ? 0.92 : this.cam.aspect <= 0.9 ? 1.12 : 1.05;
+      const dist = r / Math.sin(Math.min(vf, hf) / 2) * k;
+      const target = v(0, (gTop + y0) / 2 - (gTop - y0) * 0.08, 0);
+      const dir = this.firstFrame ? v(1, 0.8, 1.3).normalize() : this.cam.position.clone().sub(this.controls.target).normalize();
       this.controls.target.copy(target);
-      const fit = Math.pow(Math.min(1, this.cam.aspect || 1), 0.9);
-      this.cam.position.copy(target.clone().add(dir.multiplyScalar(span * 2.1 / fit)));
+      this.cam.position.copy(target.clone().add(dir.multiplyScalar(dist)));
       this.firstFrame = false;
     }
   }

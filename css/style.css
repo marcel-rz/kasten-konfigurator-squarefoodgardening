@@ -28,8 +28,11 @@ button { font: inherit; font-size: 14px; padding: 7px 12px; border-radius: 8px; 
 button:hover { border-color: var(--muted); }
 button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 #viewer-wrap { position: sticky; top: 10px; display: flex; flex-direction: column; gap: 12px; }
-@media (max-width: 860px) { #viewer-wrap { position: static; } #viewer { height: 52vh; } }
-#viewer { height: min(62vh, 560px); min-height: 320px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--card); overflow: hidden; touch-action: none; }
+@media (max-width: 860px) { #viewer-wrap { position: static; } #viewer { height: 62vh; min-height: 360px; } }
+.top.big { grid-template-columns: 1fr; }
+.top.big #viewer-wrap { order: -1; position: static; }
+.top.big #viewer { height: 82vh; max-height: none; }
+#viewer { height: max(420px, calc(100vh - 230px)); max-height: 820px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--card); overflow: hidden; touch-action: none; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 6px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 10px; }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }

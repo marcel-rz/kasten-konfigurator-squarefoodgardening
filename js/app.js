@@ -100,8 +100,15 @@ function schedule() { clearTimeout(timer); timer = setTimeout(render, 120); }
 const scene = new KastenScene($('#viewer'));
 const VIEW_BTNS = [['explode', 'Explosion'], ['plants', 'Erde und Pflanzen'], ['lid', 'Deckel öffnen'], ['doors', 'Türen öffnen'], ['net', 'Netz anzeigen']];
 function buildToolbar() {
-  $('#toolbar').innerHTML = VIEW_BTNS.map(([k, t]) => `<button type="button" data-v="${k}">${t}</button>`).join('');
+  $('#toolbar').innerHTML = `<button type="button" id="big">Großansicht</button>` + VIEW_BTNS.map(([k, t]) => `<button type="button" data-v="${k}">${t}</button>`).join('');
   $('#toolbar').onclick = e => {
+    if (e.target.id === 'big') {
+      const on = $('.top').classList.toggle('big');
+      e.target.classList.toggle('on', on); e.target.textContent = on ? 'Normale Ansicht' : 'Großansicht';
+      if (on) $('#viewer').scrollIntoView({ block: 'start' });
+      setTimeout(() => { scene.resize(); scene.camKey = null; render(); }, 50);
+      return;
+    }
     const k = e.target.dataset.v; if (!k) return;
     scene.view[k] = !scene.view[k];
     if ((k === 'lid' || k === 'doors') && scene.view[k]) scene.view.net = true;
