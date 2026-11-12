@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { NET_TYPES, GROUNDS } from './calc.js';
+import { braced } from './options.js';
 
 const v = (a, b, c) => new THREE.Vector3(a, b, c);
 const L = c => new THREE.MeshLambertMaterial({ color: c });
@@ -91,6 +92,8 @@ export class KastenScene {
     this.box(g, M.lath, lw, h - 2 * lw, lt, x0 + lw / 2, h / 2, 0);
     this.box(g, M.lath, lw, h - 2 * lw, lt, x0 + w - lw / 2, h / 2, 0);
     this.netPanel(g, v(x0 + lw, lw, 0), v(x0 + w - lw, h - lw, 0), mesh, netMat, 'z');
+    // Diagonalstrebe: unten an der Scharnierseite nach oben zur Schlossseite
+    if (braced(w, h)) this.beam(g, v(dir * lw, lw, 0), v(dir * (w - lw), h - lw, 0), c);
     [h * 0.15, h * 0.85].forEach(y => this.mesh(g, hingeGeo, M.metal, 0, y, 0));
     this.mesh(g, sph, M.metal, dir > 0 ? w - 3 : -w + 3, h / 2, lt, 1.2, 1.2, 1.2);
   }
@@ -101,6 +104,7 @@ export class KastenScene {
     this.box(g, M.lath, w, lw, lt, cx, y0 + lw / 2, 0); this.box(g, M.lath, w, lw, lt, cx, y1 - lw / 2, 0);
     this.box(g, M.lath, lw, h - 2 * lw, lt, x0 + lw / 2, (y0 + y1) / 2, 0); this.box(g, M.lath, lw, h - 2 * lw, lt, x1 - lw / 2, (y0 + y1) / 2, 0);
     this.netPanel(g, v(x0 + lw, y0 + lw, 0), v(x1 - lw, y1 - lw, 0), mesh, netMat, 'z');
+    if (braced(w, h)) this.beam(g, v(x0 + lw, y0 + lw, 0), v(x1 - lw, y1 - lw, 0), c);
   }
   // Rahmen aus Latten mit Netz, waagerecht in der XZ-Ebene (y = 0)
   hFrame(g, x0, x1, z0, z1, c, netMat, mesh) {
@@ -108,6 +112,7 @@ export class KastenScene {
     this.box(g, M.lath, w, lt, lw, cx, lt / 2, z0 + lw / 2); this.box(g, M.lath, w, lt, lw, cx, lt / 2, z1 - lw / 2);
     this.box(g, M.lath, lw, lt, d - 2 * lw, x0 + lw / 2, lt / 2, cz); this.box(g, M.lath, lw, lt, d - 2 * lw, x1 - lw / 2, lt / 2, cz);
     this.netPanel(g, v(x0 + lw, lt, z0 + lw), v(x1 - lw, lt, z1 - lw), mesh, netMat, 'y');
+    if (braced(w, d)) { const b = this.beam(g, v(x0 + lw, lt / 2, z0 + lw), v(x1 - lw, lt / 2, z1 - lw), c); }
   }
   hinge(g, x, y, z, axis) {
     const m = this.mesh(g, hingeGeo, M.metal, x, y, z);
@@ -123,7 +128,11 @@ export class KastenScene {
 
   buildFront(ng, R, c, G, geo, netMat, mesh) {
     const { rx, yb, ytn, az } = geo, F = R.frontP, mv = this.movers;
-    if (c.front === 'netz') { this.netPanel(ng, v(-rx / 2, yb, az), v(rx / 2, ytn, az), mesh, netMat, 'z'); return; }
+    const fixedFront = (x0, x1) => {
+      if (!c.removable) { this.netPanel(ng, v(x0, yb, az), v(x1, ytn, az), mesh, netMat, 'z'); return; }
+      const g = new THREE.Group(); g.position.z = az; ng.add(g); this.vFrame(g, x0, x1, yb, ytn, c, netMat, mesh);
+    };
+    if (c.front === 'netz') { fixedFront(-rx / 2, rx / 2); return; }
     const L = F.leaf;
     if (c.front === 'doppeltuer' || c.front === 'tuer') {
       const l = new THREE.Group(); l.position.set(-rx / 2, yb, az); ng.add(l); this.leaf(l, L.w, L.h, 1, c, netMat, mesh);
@@ -140,7 +149,7 @@ export class KastenScene {
       mv.push({ k: 'front', f: t => { g.rotation.x = -t * 1.35; } });
     }
     if (c.front === 'schiebetuer') {
-      this.netPanel(ng, v(-rx / 2, yb, az), v(0, ytn, az), mesh, netMat, 'z');
+      fixedFront(-rx / 2, 0);
       [yb + 0.5, ytn - 0.5].forEach(y => this.box(ng, M.lath, rx, 1, c.lt, 0, y, az + c.lt * 1.8));
       const g = new THREE.Group(); g.position.set(rx / 2 - L.w, yb, az + c.lt); ng.add(g);
       this.vFrame(g, 0, L.w, 0, L.h, c, netMat, mesh);
@@ -164,7 +173,10 @@ export class KastenScene {
     const { ax, az, yt } = geo, T = R.topP, mv = this.movers, lw = c.lw;
     const DX = 2 * ax + c.ps, DZ = 2 * az + c.ps;
     if (c.top === 'offen') return;
-    if (c.top === 'fest') { this.netPanel(ng, v(-DX / 2, yt, -DZ / 2), v(DX / 2, yt, DZ / 2), mesh, netMat, 'y'); return; }
+    if (c.top === 'fest') {
+      if (!c.removable) { this.netPanel(ng, v(-DX / 2, yt, -DZ / 2), v(DX / 2, yt, DZ / 2), mesh, netMat, 'y'); return; }
+      const g = new THREE.Group(); g.position.y = yt; ng.add(g); this.hFrame(g, -DX / 2, DX / 2, -DZ / 2, DZ / 2, c, netMat, mesh); return;
+    }
     if (c.top === 'klapp') {
       const lid = new THREE.Group(); lid.position.set(0, yt, -DZ / 2); ng.add(lid);
       this.hFrame(lid, -DX / 2, DX / 2, 0, DZ, c, netMat, mesh);
@@ -217,7 +229,8 @@ export class KastenScene {
       });
       this.box(ng, M.lath, DX, lw, c.lt, 0, yr - lw / 2, 0);
       const backG = new THREE.Group(); backG.position.set(0, yr, 0); backG.rotation.x = -al; ng.add(backG);
-      this.netPanel(backG, v(-DX / 2, 0, -s), v(DX / 2, 0, 0), mesh, netMat, 'y');
+      if (c.removable) this.hFrame(backG, -DX / 2, DX / 2, -s, 0, c, netMat, mesh);
+      else this.netPanel(backG, v(-DX / 2, 0, -s), v(DX / 2, 0, 0), mesh, netMat, 'y');
       const flap = new THREE.Group(); flap.position.set(0, yr, 0); ng.add(flap);
       this.hFrame(flap, -DX / 2, DX / 2, 0, s, c, netMat, mesh);
       const nh = DX > 150 ? 3 : 2;
@@ -249,7 +262,7 @@ export class KastenScene {
     this.root.traverse(o => { if (o.isCSS2DObject && o.element.parentNode) o.element.parentNode.removeChild(o.element); });
     this.scene.remove(this.root);
     this.root = new THREE.Group(); this.scene.add(this.root);
-    this.parts = {}; this.movers = [];
+    this.parts = {}; this.movers = []; this.removables = []; this.removableMode = !!R.c.removable;
     const H = c.h, y0 = -H / 2, t = c.t;
     const netMat = new THREE.LineBasicMaterial({ color: NET_TYPES[c.netType].color, transparent: true, opacity: 0.55 });
     const mesh = Math.max(c.mesh, 3); // Darstellung: sehr feine Netze gröber zeichnen
@@ -359,14 +372,32 @@ export class KastenScene {
       this.box(ng, M.lath, rx, lw, lt, 0, yt - lw / 2, -az);
       this.box(ng, M.lath, lt, lw, rz, ax, yt - lw / 2, 0);
       this.box(ng, M.lath, lt, lw, rz, -ax, yt - lw / 2, 0);
+      // Kopfbänder in den oberen Ecken
+      const kb = 18, ip = c.ps / 2;
+      [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([sx, sz]) => {
+        this.beam(ng, v(sx * (ax - ip), yt - lw - kb, sz * az), v(sx * (ax - ip - kb), yt - lw, sz * az), c);
+        this.beam(ng, v(sx * ax, yt - lw - kb, sz * (az - ip)), v(sx * ax, yt - lw, sz * (az - ip - kb)), c);
+      });
       if (c.net) {
         const ytn = yt - lw;
-        this.netPanel(ng, v(-rx / 2, yb, -az), v(rx / 2, ytn, -az), mesh, netMat, 'z');
-        this.netPanel(ng, v(ax, yb, -rz / 2), v(ax, ytn, rz / 2), mesh, netMat, 'x');
-        this.netPanel(ng, v(-ax, yb, -rz / 2), v(-ax, ytn, rz / 2), mesh, netMat, 'x');
+        // Jede Seite in eine eigene Gruppe, damit sie beim Abnehmen nach außen wandern kann
+        this.removables = [];
+        const cont = dir => { const g = new THREE.Group(); ng.add(g); this.removables.push({ g, dir }); return g; };
+        const cB = cont(v(0, 0, -1)), cL = cont(v(-1, 0, 0)), cR = cont(v(1, 0, 0)), cF = cont(v(0, 0, 1)), cT = cont(v(0, 1, 0));
+        if (c.removable) {
+          const gb = new THREE.Group(); gb.position.z = -az; cB.add(gb); this.vFrame(gb, -rx / 2, rx / 2, yb, ytn, c, netMat, mesh);
+          [[cL, -1], [cR, 1]].forEach(([cc, sx]) => {
+            const g = new THREE.Group(); g.position.x = sx * ax; g.rotation.y = Math.PI / 2; cc.add(g);
+            this.vFrame(g, -rz / 2, rz / 2, yb, ytn, c, netMat, mesh);
+          });
+        } else {
+          this.netPanel(cB, v(-rx / 2, yb, -az), v(rx / 2, ytn, -az), mesh, netMat, 'z');
+          this.netPanel(cR, v(ax, yb, -rz / 2), v(ax, ytn, rz / 2), mesh, netMat, 'x');
+          this.netPanel(cL, v(-ax, yb, -rz / 2), v(-ax, ytn, rz / 2), mesh, netMat, 'x');
+        }
         const geo = { rx, yb, ytn, az, ax, yt };
-        this.buildFront(ng, R, c, G, geo, netMat, mesh);
-        this.buildTop(ng, R, c, G, geo, netMat, mesh);
+        this.buildFront(cF, R, c, G, geo, netMat, mesh);
+        this.buildTop(cT, R, c, G, geo, netMat, mesh);
       }
     }
 
@@ -401,9 +432,14 @@ export class KastenScene {
     A.ex += ((V.explode ? 1 : 0) - A.ex) * 0.12;
     A.lid += ((V.lid ? 1 : 0) - A.lid) * 0.08;
     A.door += ((V.doors ? 1 : 0) - A.door) * 0.08;
+    A.rem = (A.rem || 0) + ((V.net ? 0 : 1) - (A.rem || 0)) * 0.08;
     const off = A.ex < 0.05;
     if (P.xg) P.xg.position.y = A.ex * this.H * 1.1;
-    if (P.ng) P.ng.visible = V.net && off;
+    if (P.ng) P.ng.visible = (this.removableMode || V.net) && off;
+    (this.removables || []).forEach(r => {
+      const d = this.removableMode ? A.rem : 0;
+      r.g.position.copy(r.dir).multiplyScalar(d * 55); r.g.visible = d < 0.96;
+    });
     if (P.pg) P.pg.visible = V.plants && off;
     const gap = Math.max(22, this.H * 1.2), st = this.stack || [];
     st.forEach((l, i) => { l.g.position.y = A.ex * (i + 1) * gap; l.lab.visible = A.ex > 0.6; });

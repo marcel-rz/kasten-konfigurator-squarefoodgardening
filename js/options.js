@@ -7,9 +7,13 @@ const r1 = v => Math.round(v * 10) / 10;
 const N = (w, h) => ({ a: w * h, e: 2 * (w + h) });
 const f = v => String(r1(v)).replace('.', ',');
 
-// Rahmen aus Latten mit Netz (Tür, Deckel ...)
+// Ab dieser Rahmengröße (längste Seite in cm) kommt automatisch eine Diagonalstrebe rein
+export const BRACE_AT = 70;
+export const braced = (w, h) => Math.max(w, h) > BRACE_AT;
+
+// Rahmen aus Latten mit Netz (Tür, Deckel, abnehmbares Netzfeld ...)
 function frame(name, w, h, c, qty = 1) {
-  return {
+  const p = {
     laths: [
       { label: `${name} oben/unten`, len: w, qty: 2 * qty },
       { label: `${name} seitlich`, len: h - 2 * c.lw, qty: 2 * qty },
@@ -17,11 +21,37 @@ function frame(name, w, h, c, qty = 1) {
     net: Array(qty).fill(N(w - 2 * c.lw, h - 2 * c.lw)),
     screws: 8 * qty,
   };
+  if (braced(w, h)) {
+    p.laths.push({ label: `${name} Diagonalstrebe`, len: Math.hypot(w - 2 * c.lw, h - 2 * c.lw), qty });
+    p.screws += 4 * qty;
+    p.braced = true;
+  }
+  return p;
 }
-const merge = (...ps) => ({
-  laths: ps.flatMap(p => p.laths || []), net: ps.flatMap(p => p.net || []), hw: ps.flatMap(p => p.hw || []),
-  hinges: ps.reduce((s, p) => s + (p.hinges || 0), 0), screws: ps.reduce((s, p) => s + (p.screws || 0), 0),
-});
+const BRACE_TXT = ' Weil der Rahmen groß ist, kommt eine Diagonalstrebe rein (Enden schräg zuschneiden), damit er nicht durchhängt oder sich verzieht.';
+const DOOR_BRACE_TXT = ' Wegen der Breite bekommt jeder Flügel eine Diagonalstrebe: unten an der Scharnierseite anfangen und schräg nach oben zur Schlossseite. So drückt das Gewicht die Strebe zusammen und die Tür hängt nicht durch.';
+
+// Fest stehendes Netzfeld: abnehmbar als eigener Rahmen mit Vorreibern, sonst direkt angetackert
+export function panel(name, w, h, c) {
+  if (!c.removable) return { net: [N(w, h)] };
+  const p = frame(name, w, h, c);
+  p.hw = [{ label: 'Vorreiber (Drehriegel) für abnehmbare Netzrahmen', qty: Math.max(w, h) > 120 ? 6 : 4, unit: 'Stk' }];
+  return p;
+}
+// Seiten- und Rückwand des Käfigs
+export function walls(c, G) {
+  const hh = c.cageH - c.lw - 0.5;
+  return merge(panel('Netzrahmen hinten', G.oX, hh, c), panel('Netzrahmen links', G.oZ, hh, c), panel('Netzrahmen rechts', G.oZ, hh, c));
+}
+function merge(...ps) {
+  const out = { laths: [], net: [], hw: [], hinges: 0, screws: 0, braced: false };
+  ps.forEach(p => {
+    out.laths.push(...(p.laths || [])); out.net.push(...(p.net || []));
+    (p.hw || []).forEach(h => { const e = out.hw.find(x => x.label === h.label && x.unit === h.unit); if (e) e.qty += h.qty; else out.hw.push({ ...h }); });
+    out.hinges += p.hinges || 0; out.screws += p.screws || 0; out.braced = out.braced || !!p.braced;
+  });
+  return out;
+}
 const hingeCount = len => (len > 150 ? 3 : 2);
 
 // Halbe Ellipse: Bogenlänge (Ramanujan) für Tunnelbögen
@@ -43,7 +73,7 @@ export const FRONTS = {
         hw: [{ label: 'Schubriegel für Doppeltür', qty: 1, unit: 'Stk' }] });
       p.leaf = { w, h: FH, leaves: 2 };
       p.step = { t: 'Doppeltür bauen', d: `Zwei Rahmen ${f(w)} × ${f(FH)} cm aus Latten bauen (Ecken verschrauben) und Netz innen bespannen. Jeder Flügel bekommt 2 Scharniere am vorderen Pfosten. An einen Flügel innen die Schlagleiste schrauben, sodass sie über den Mittelspalt ragt, an den anderen den Schubriegel. Oben schlagen die Flügel gegen die vordere Querlatte.` };
-      if (w > 80) p.warn = [`Türflügel sind ${f(w)} cm breit und hängen leicht durch. Eine Diagonalstrebe pro Flügel hilft.`];
+      if (p.braced) p.step.d += DOOR_BRACE_TXT;
       return p;
     },
   },
@@ -54,7 +84,7 @@ export const FRONTS = {
       const p = merge(frame('Türrahmen', w, FH, c), { hinges: 2, hw: [{ label: 'Riegel / Haken für Tür', qty: 1, unit: 'Stk' }] });
       p.leaf = { w, h: FH, leaves: 1 };
       p.step = { t: 'Tür bauen', d: `Rahmen ${f(w)} × ${f(FH)} cm aus Latten bauen und bespannen. 2 Scharniere am linken Pfosten, Riegel rechts. Oben schlägt die Tür gegen die vordere Querlatte.` };
-      if (w > 80) p.warn = [`Die Tür ist ${f(w)} cm breit und hängt durch. Diagonalstrebe von unten am Scharnier nach oben außen einbauen oder eine Doppeltür nehmen.`];
+      if (p.braced) p.step.d += DOOR_BRACE_TXT;
       return p;
     },
   },
@@ -73,9 +103,9 @@ export const FRONTS = {
     name: 'Schiebetür', movable: true,
     parts(c, G) {
       const { W, FH } = frontGeom(c, G), w = W / 2 + 3;
-      const p = merge(frame('Schiebetür', w, FH, c), {
+      const p = merge(frame('Schiebetür', w, FH, c), panel('Netzrahmen vorne links', W / 2, FH, c), {
         laths: [{ label: 'Laufleiste oben/unten (Führung)', len: W, qty: 2 }, { label: 'Abdeckleiste Führung', len: W, qty: 2 }],
-        net: [N(W / 2, FH)], screws: 12,
+        screws: 12,
         hw: [{ label: 'Türgriff / Holzknauf', qty: 1, unit: 'Stk' }, { label: 'Gleitband oder Kerzenwachs für die Führung', qty: 1, unit: 'Stk' }] });
       p.leaf = { w, h: FH };
       p.step = { t: 'Schiebetür bauen', d: `Die linke Hälfte der Vorderseite fest mit Netz bespannen. Oben und unten je eine Laufleiste (${f(W)} cm) vor die Pfosten schrauben und mit einer zweiten Leiste davor eine Nut bilden, in der die Tür läuft. Türrahmen ${f(w)} × ${f(FH)} cm bauen, bespannen und einsetzen. Die Führung mit Kerzenwachs einreiben, dann gleitet sie leichter.` };
@@ -89,9 +119,10 @@ export const FRONTS = {
       return {
         laths: [{ label: 'Klemmleiste oben für das Rollo', len: W, qty: 1 }],
         net: [N(W, FH + 10)], screws: 6,
-        hw: [{ label: `Rundstab Ø 2,5 cm, ${f(W)} cm lang`, qty: 1, unit: 'Stk' }, { label: 'Klettbänder zum Hochbinden', qty: 3, unit: 'Stk' }, { label: 'Haken unten am Kasten', qty: 3, unit: 'Stk' }],
+        hw: [{ label: `Rundstab Ø 2,5 cm, ${f(W)} cm lang`, qty: 1, unit: 'Stk' }, { label: 'Klettbänder zum Hochbinden', qty: 3, unit: 'Stk' }, { label: 'Haken unten am Kasten', qty: 3, unit: 'Stk' },
+          ...(c.removable ? [{ label: 'Flügelschrauben M6 mit Einschlagmutter (Klemmleiste)', qty: 3, unit: 'Stk' }] : [])],
         leaf: { w: W, h: FH },
-        step: { t: 'Netz-Rollo anbringen', d: `Ein Stück Netz ${f(W)} × ${f(FH + 10)} cm oben mit der Klemmleiste an die vordere Querlatte schrauben. Unten den Rundstab einwickeln und festtackern. Zum Öffnen das Netz auf den Stab aufrollen und mit den Klettbändern oben festmachen. Zu wird es unten in die Haken am Kasten eingehängt. Die einfachste und billigste Variante.` },
+        step: { t: 'Netz-Rollo anbringen', d: `Ein Stück Netz ${f(W)} × ${f(FH + 10)} cm oben mit der Klemmleiste an die vordere Querlatte ${c.removable ? 'klemmen (mit Flügelschrauben, so lässt sich das Rollo ohne Werkzeug abnehmen)' : 'schrauben'}. Unten den Rundstab einwickeln und festtackern. Zum Öffnen das Netz auf den Stab aufrollen und mit den Klettbändern oben festmachen. Zu wird es unten in die Haken am Kasten eingehängt. Die einfachste und billigste Variante.` },
       };
     },
   },
@@ -99,7 +130,7 @@ export const FRONTS = {
     name: 'Netz fest', movable: false,
     parts(c, G) {
       const { W, FH } = frontGeom(c, G);
-      return { net: [N(W, FH)], step: null };
+      return { ...panel('Netzrahmen vorne', W, FH, c), step: null };
     },
   },
 };
@@ -150,10 +181,12 @@ export const TOPS = {
       const DX = G.oX + 2 * c.ps, DZ = G.oZ + 2 * c.ps, rh = c.roofH, s = Math.hypot(DZ / 2, rh), h = hingeCount(DX);
       const p = merge(frame('Dachklappe', DX, s, c), {
         laths: [{ label: 'Sparren (Giebel)', len: s, qty: 4 }, { label: 'Firstlatte', len: DX, qty: 1 }],
-        net: [N(DX, s), { a: DZ * rh / 2, e: DZ + 2 * s }, { a: DZ * rh / 2, e: DZ + 2 * s }], hinges: h, screws: 12,
-        hw: [{ label: 'Haken / Vorreiber für Dachklappe', qty: 1, unit: 'Stk' }, { label: 'Aufstellstab oder Kette', qty: 1, unit: 'Stk' }] });
+        net: [{ a: DZ * rh / 2, e: DZ + 2 * s }, { a: DZ * rh / 2, e: DZ + 2 * s }], hinges: h, screws: 12,
+        hw: [{ label: 'Haken / Vorreiber für Dachklappe', qty: 1, unit: 'Stk' }, { label: 'Aufstellstab oder Kette', qty: 1, unit: 'Stk' },
+          ...(c.removable ? [{ label: 'Vorreiber zum Abnehmen des ganzen Dachs', qty: 4, unit: 'Stk' }] : [])] },
+        panel('Dachfläche hinten', DX, s, c));
       p.lid = { DX, DZ, rh, s };
-      p.step = { t: 'Satteldach', d: `An beiden Giebelseiten je zwei Sparren (${f(s)} cm, Enden schräg auf Gehrung schneiden) von den Pfosten zum First schrauben und oben die Firstlatte (${f(DX)} cm) einsetzen. Die hintere Dachfläche und die beiden Giebeldreiecke fest bespannen. Die vordere Dachfläche ist ein eigener Rahmen ${f(DX)} × ${f(s)} cm, der mit ${h} Scharnieren an der Firstlatte hängt und nach oben aufklappt. Vorteil: ${f(rh)} cm mehr Höhe in der Mitte, Regen und Schnee rutschen ab.` };
+      p.step = { t: 'Satteldach', d: `An beiden Giebelseiten je zwei Sparren (${f(s)} cm, Enden schräg auf Gehrung schneiden) von den Pfosten zum First schrauben und oben die Firstlatte (${f(DX)} cm) einsetzen. Die hintere Dachfläche und die beiden Giebeldreiecke fest bespannen. Die vordere Dachfläche ist ein eigener Rahmen ${f(DX)} × ${f(s)} cm, der mit ${h} Scharnieren an der Firstlatte hängt und nach oben aufklappt. Vorteil: ${f(rh)} cm mehr Höhe in der Mitte, Regen und Schnee rutschen ab.${c.removable ? ' Die Sparren werden nicht festgeschraubt, sondern mit 4 Vorreibern auf den Pfosten gehalten. So kann man das ganze Dach abheben.' : ''}` };
       return p;
     },
   },
@@ -165,9 +198,9 @@ export const TOPS = {
       return {
         laths: [{ label: 'Firstlatte (hält die Bögen)', len: DX, qty: 1 }],
         net: [N(DX, arc), { a: Math.PI * DZ / 2 * rh / 2, e: arc + DZ }, { a: Math.PI * DZ / 2 * rh / 2, e: arc + DZ }], screws: 4 * n,
-        hw: [{ label: `PE-Rohr Ø 20 mm für ${n} Bögen à ${f(arc + 10)} cm`, qty: Math.ceil(n * (arc + 10) / 100), unit: 'm' }, { label: 'Rohrschellen', qty: 2 * n, unit: 'Stk' }, { label: 'Kabelbinder (UV-fest)', qty: 50, unit: 'Stk' }],
+        hw: [{ label: `PE-Rohr Ø 20 mm für ${n} Bögen à ${f(arc + 10)} cm`, qty: Math.ceil(n * (arc + 10) / 100), unit: 'm' }, { label: 'Rohrschellen', qty: 2 * n, unit: 'Stk' }, c.removable ? { label: 'Klettbänder (UV-fest, wiederverwendbar)', qty: 40, unit: 'Stk' } : { label: 'Kabelbinder (UV-fest)', qty: 50, unit: 'Stk' }],
         lid: { DX, DZ, rh, n, arc },
-        step: { t: 'Bogendach', d: `${n} PE-Rohre à ${f(arc + 10)} cm zuschneiden, jeweils zu einem Bogen biegen und mit Rohrschellen innen an die linke und rechte Querlatte schrauben (Abstand ca. ${f(DX / (n - 1))} cm). Oben die Firstlatte mit Kabelbindern an alle Bögen binden, damit sie nicht kippen. Netz über die Bögen spannen und mit Kabelbindern befestigen, die Enden als Halbkreis zuschneiden. Vorteil: sehr stabil, billig und ${f(rh)} cm mehr Höhe in der Mitte. Zugang nur über die Vorderseite.` },
+        step: { t: 'Bogendach', d: `${n} PE-Rohre à ${f(arc + 10)} cm zuschneiden, jeweils zu einem Bogen biegen und mit Rohrschellen innen an die linke und rechte Querlatte schrauben (Abstand ca. ${f(DX / (n - 1))} cm). Oben die Firstlatte mit Kabelbindern an alle Bögen binden, damit sie nicht kippen. Netz über die Bögen spannen und mit ${c.removable ? 'Klettbändern befestigen (lässt sich so jederzeit abnehmen)' : 'Kabelbindern befestigen'}, die Enden als Halbkreis zuschneiden. Vorteil: sehr stabil, billig und ${f(rh)} cm mehr Höhe in der Mitte. Zugang nur über die Vorderseite.` },
       };
     },
   },
@@ -175,7 +208,7 @@ export const TOPS = {
     name: 'Netz fest', movable: false,
     parts(c, G) {
       const DX = G.oX + 2 * c.ps, DZ = G.oZ + 2 * c.ps;
-      return { net: [N(DX, DZ)], step: null };
+      return { ...panel('Netzrahmen Dach', DX, DZ, c), step: null };
     },
   },
   offen: {
@@ -186,4 +219,14 @@ export const TOPS = {
 
 export function roofExtra(c) {
   return c.top === 'sattel' || c.top === 'tunnel' ? c.roofH : 0;
+}
+
+// Hinweis auf Diagonalstreben an die Anleitung hängen (Türen haben ihren eigenen Text)
+for (const [key, o] of [...Object.entries(FRONTS), ...Object.entries(TOPS)]) {
+  const orig = o.parts;
+  o.parts = (c, G) => {
+    const p = orig(c, G);
+    if (p.braced && p.step && !['doppeltuer', 'tuer'].includes(key) && !p.step.d.includes('Diagonalstrebe')) p.step = { ...p.step, d: p.step.d + BRACE_TXT };
+    return p;
+  };
 }

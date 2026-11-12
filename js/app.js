@@ -31,6 +31,7 @@ const SCHEMA = [
     ['top', 'Dach', 'select', { options: Object.fromEntries(Object.entries(TOPS).map(([k, v]) => [k, v.name])) }],
     ['roofH', 'Firsthöhe', 'number', { min: 10, max: 100, step: 5, hint: 'Sattel- und Bogendach' }],
     ['chain', 'Haltekette am Deckel', 'checkbox'],
+    ['removable', 'Netz komplett abnehmbar', 'checkbox'],
     ['front', 'Vorderseite', 'select', { options: Object.fromEntries(Object.entries(FRONTS).map(([k, v]) => [k, v.name])) }],
   ]},
   { title: 'Untergrund', fields: [
@@ -92,7 +93,7 @@ function syncDisabled() {
   ['ps', 'cageH', 'postGround', 'lw', 'lt'].forEach(k => f.elements[k].disabled = !c.posts);
   if (!GROUNDS[c.ground].soft) f.elements.postGround.disabled = true;
   f.elements.drain.disabled = !GROUNDS[c.ground].layers.includes('drainage');
-  ['netType', 'mesh', 'top', 'front'].forEach(k => f.elements[k].disabled = !c.net);
+  ['netType', 'mesh', 'top', 'front', 'removable'].forEach(k => f.elements[k].disabled = !c.net);
   f.elements.chain.disabled = !(c.net && c.top === 'klapp');
   f.elements.roofH.disabled = !(c.net && (c.top === 'sattel' || c.top === 'tunnel'));
 }
@@ -123,7 +124,8 @@ function buildToolbar() {
 function markToolbar(c = sanitize(cfg)) {
   document.querySelectorAll('#toolbar button').forEach(b => {
     const k = b.dataset.v;
-    b.classList.toggle('on', !!scene.view[k]);
+    b.classList.toggle('on', k === 'net' && c.removable ? !scene.view.net : !!scene.view[k]);
+    if (k === 'net') b.textContent = c.removable ? (scene.view.net ? 'Netz abnehmen' : 'Netz wieder dran') : 'Netz anzeigen';
     b.hidden = (k === 'lid' && !(c.net && TOPS[c.top].movable)) || (k === 'doors' && !(c.net && FRONTS[c.front].movable)) || (k === 'net' && !c.posts);
   });
 }

@@ -1,4 +1,4 @@
-import { FRONTS, TOPS, roofExtra } from './options.js';
+import { FRONTS, TOPS, roofExtra, walls } from './options.js';
 import { PLANTS, rate, makePlan } from './plants.js';
 
 // Reine Berechnung: aus einer Konfiguration werden Geometrie, Materialliste,
@@ -16,6 +16,7 @@ export const DEFAULTS = {
   top: 'klapp',               // Schlüssel aus TOPS (options.js)
   roofH: 35,                  // Firsthöhe bei Sattel-/Bogendach
   chain: true,
+  removable: true,            // Netz komplett abnehmbar (Rahmen mit Vorreibern, Aushebescharniere)
   front: 'doppeltuer',        // Schlüssel aus FRONTS (options.js)
   ground: 'rasen',            // Schlüssel aus GROUNDS
   drain: 5,                   // Drainageschicht in cm (nur wo nötig)
@@ -72,7 +73,7 @@ export function sanitize(c) {
   o.soilGap = Math.min(o.h - 1, Math.max(0, Number(o.soilGap) || 0));
   clamp('ps', 3, 15); clamp('cageH', 20, 200); clamp('lw', 1.5, 8); clamp('lt', 1, 6); clamp('mesh', 0.5, 10);
   o.postGround = Math.min(100, Math.max(0, Number(o.postGround) || 0));
-  o.posts = !!o.posts; o.chain = !!o.chain;
+  o.posts = !!o.posts; o.chain = !!o.chain; o.removable = !!o.removable;
   if (!GROUNDS[o.ground]) o.ground = DEFAULTS.ground;
   if (!GROUNDS[o.ground].soft) o.postGround = 0;
   o.drain = Math.min(20, Math.max(0, Number(o.drain) || 0));
@@ -157,15 +158,14 @@ export function compute(cfg) {
   if (c.posts) {
     laths.push({ label: 'Querlatte vorne/hinten', len: G.oX, qty: 2 });
     laths.push({ label: 'Querlatte links/rechts', len: G.oZ, qty: 2 });
-    screws += 4 * 4 + 4 * 2 * 2;
+    laths.push({ label: 'Kopfband (Ecke oben, 45° zugeschnitten)', len: 25, qty: 8 });
+    screws += 4 * 4 + 4 * 2 * 2 + 16;
   }
   if (c.net) {
-    const hh = c.cageH - c.lw;
-    const add = (w, h) => { netArea += w * h; netEdge += 2 * (w + h); };
-    add(G.oX, hh); add(G.oZ, hh); add(G.oZ, hh); // hinten, links, rechts
+    const wallP = walls(c, G);
     frontP = FRONTS[c.front].parts(c, G);
     topP = TOPS[c.top].parts(c, G);
-    [frontP, topP].forEach(p => {
+    [wallP, frontP, topP].forEach(p => {
       laths.push(...(p.laths || []));
       hw.push(...(p.hw || []));
       (p.net || []).forEach(n => { netArea += n.a; netEdge += n.e; });
@@ -174,7 +174,9 @@ export function compute(cfg) {
     });
   }
   const netM2 = netArea / 10000 * 1.15;
-  if (hinges) hw.unshift({ label: 'Scharniere (verzinkt, ca. 40–50 mm)', qty: hinges, unit: 'Stk' });
+  if (hinges) hw.unshift({ label: c.removable ? 'Aushebescharniere / Steckscharniere (Tür und Deckel abnehmbar)' : 'Scharniere (verzinkt, ca. 40–50 mm)', qty: hinges, unit: 'Stk' });
+  // gleiche Beschläge zusammenfassen (z. B. Vorreiber aus Wänden und Vorderseite)
+  for (let i = hw.length - 1; i >= 0; i--) { const j = hw.findIndex(h => h.label === hw[i].label && h.unit === hw[i].unit); if (j < i) { hw[j].qty += hw[i].qty; hw.splice(i, 1); } }
 
   hw.push({ label: 'Holzschrauben 4×40 (Edelstahl/verzinkt)', qty: Math.ceil(screws * 1.2 / 10) * 10, unit: 'Stk' });
   if (hinges) hw.push({ label: 'Holzschrauben 3,5×16 für Beschläge', qty: Math.ceil((hinges * 6 + 12) / 10) * 10, unit: 'Stk' });
@@ -250,11 +252,13 @@ function instructions(G, c, d) {
   if (c.grid === 'schnur') S.push({ t: 'Raster spannen', d: `Oben an den Wänden alle ${fmt(c.cell)} cm einen Nagel oder eine Schraubenöse setzen und die Schnur in beide Richtungen spannen.` });
   if (c.posts) {
     S.push({ t: 'Pfosten setzen', d: `4 Pfosten ${fmt(c.ps)}×${fmt(c.ps)} cm auf ${fmt(G.postLen)} cm ablängen${c.postGround ? `, davon ${fmt(c.postGround)} cm in den Boden` : ''}. Jeder Pfosten kommt in die Ecke, die die überstehenden Brettenden bilden, und wird von zwei Seiten mit je 2 Schrauben angeschraubt. Mit der Wasserwaage senkrecht ausrichten.` });
-    S.push({ t: 'Querlatten oben', d: `Oben zwischen den Pfosten ringsum Latten ${fmt(c.lw)}×${fmt(c.lt)} cm anschrauben: 2× ${fmt(G.oX)} cm und 2× ${fmt(G.oZ)} cm. Das macht den Käfig steif.` });
+    S.push({ t: 'Querlatten oben', d: `Oben zwischen den Pfosten ringsum Latten ${fmt(c.lw)}×${fmt(c.lt)} cm anschrauben: 2× ${fmt(G.oX)} cm und 2× ${fmt(G.oZ)} cm. In jede obere Ecke kommen zwei Kopfbänder (25 cm, beide Enden 45° schräg) von Pfosten zu Querlatte. Die halten den Käfig auch dann steif, wenn alle Netzrahmen abgenommen sind.` });
   }
   if (c.net) {
     const nt = NET_TYPES[c.netType];
-    S.push({ t: 'Netz anbringen', d: `${nt.name}, Maschenweite ca. ${fmt(c.mesh)} cm, insgesamt ca. ${fmt(d.netM2)} m² inkl. 15 % Zugabe. Hinten und an den Seiten${c.front === 'netz' ? ', vorne' : ''}${c.top === 'fest' ? ' und oben' : ''} straff spannen und mit ${nt.fix} befestigen. Unten an der Oberkante der Kastenbretter, oben an den Querlatten.` });
+    S.push(c.removable
+      ? { t: 'Netzrahmen bauen (abnehmbar)', d: `${nt.name}, Maschenweite ca. ${fmt(c.mesh)} cm, insgesamt ca. ${fmt(d.netM2)} m² inkl. 15 % Zugabe. Jede feste Seite (hinten, links, rechts${c.front === 'netz' ? ', vorne' : ''}${c.top === 'fest' ? ', Dach' : ''}) bekommt einen eigenen Lattenrahmen, auf den das Netz straff mit ${nt.fix} gespannt wird. Die Rahmen werden zwischen die Pfosten gestellt und mit Vorreibern an Pfosten und Querlatten gehalten. Zum Abnehmen einfach die Vorreiber drehen und den Rahmen rausnehmen. Türen und Deckel hängen an Aushebescharnieren und lassen sich nach oben abheben. So kommt man an alles ran, z. B. zum Umgraben, und kann das Netz im Winter einlagern.` }
+      : { t: 'Netz anbringen', d: `${nt.name}, Maschenweite ca. ${fmt(c.mesh)} cm, insgesamt ca. ${fmt(d.netM2)} m² inkl. 15 % Zugabe. Hinten und an den Seiten${c.front === 'netz' ? ', vorne' : ''}${c.top === 'fest' ? ' und oben' : ''} straff spannen und mit ${nt.fix} befestigen. Unten an der Oberkante der Kastenbretter, oben an den Querlatten.` });
     if (d.frontP && d.frontP.step) S.push(d.frontP.step);
     if (d.topP && d.topP.step) S.push(d.topP.step);
   }
