@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { NET_TYPES, GROUNDS } from './calc.js';
 
 const v = (a, b, c) => new THREE.Vector3(a, b, c);
@@ -20,6 +21,9 @@ export class KastenScene {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     el.appendChild(this.renderer.domElement);
+    this.labels = new CSS2DRenderer();
+    Object.assign(this.labels.domElement.style, { position: 'absolute', top: '0', left: '0', pointerEvents: 'none' });
+    el.appendChild(this.labels.domElement);
     this.scene = new THREE.Scene();
     this.cam = new THREE.PerspectiveCamera(40, 1, 1, 5000);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xb0a890, 2.2));
@@ -39,7 +43,7 @@ export class KastenScene {
   resize() {
     const w = this.el.clientWidth, h = this.el.clientHeight;
     if (!w || !h) return;
-    this.renderer.setSize(w, h); this.cam.aspect = w / h; this.cam.updateProjectionMatrix();
+    this.renderer.setSize(w, h); this.labels.setSize(w, h); this.cam.aspect = w / h; this.cam.updateProjectionMatrix();
   }
 
   box(g, m, w, h, d, x, y, z, edge = true) {
@@ -93,6 +97,7 @@ export class KastenScene {
 
   update(R) {
     const { G, c } = R;
+    this.root.traverse(o => { if (o.isCSS2DObject && o.element.parentNode) o.element.parentNode.removeChild(o.element); });
     this.scene.remove(this.root);
     this.root = new THREE.Group(); this.scene.add(this.root);
     this.parts = {}; this.chains = [];
@@ -123,7 +128,7 @@ export class KastenScene {
 
     // ---- Untergrund und Bodenaufbau ----
     const gr = GROUNDS[c.ground], Ls = gr.layers, gY = y0 - (Ls.includes('kloetze') ? 2 : 0);
-    const gSize = Math.max(G.LX, G.LZ) * 2.6;
+    const gSize = Math.max(G.LX, G.LZ) * 2.6, nBefore = this.root.children.length;
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(gSize, gSize), L(gr.color));
     plane.rotation.x = -Math.PI / 2; plane.position.y = gY - 0.15; this.root.add(plane);
     const tile = c.ground === 'pflaster' ? 30 : c.ground === 'holz' ? 14 : 0;
@@ -135,34 +140,51 @@ export class KastenScene {
       }
       this.lines(this.root, P, new THREE.LineBasicMaterial({ color: 0x5f5a50, transparent: true, opacity: 0.5 }));
     }
-    const lg = new THREE.Group(); this.root.add(lg);
-    if (Ls.includes('kloetze')) {
+    const groundObjs = new Set(this.root.children.slice(nBefore));
+    // Jede Bodenschicht ist eine eigene Gruppe, damit die Explosionsansicht sie auseinanderziehen kann
+    const lg = new THREE.Group(); this.root.add(lg); this.parts.lg = lg;
+    this.stack = [];
+    const layer = (label, build) => {
+      const g = new THREE.Group(); lg.add(g); build(g);
+      const el = document.createElement('div'); el.className = 'lbl'; el.textContent = label;
+      const lab = new CSS2DObject(el); lab.position.set(G.LX / 2 + 8, y0, -G.LZ / 4); g.add(lab);
+      this.stack.push({ g, lab });
+    };
+    if (Ls.includes('kloetze')) layer('Unterlegklötze', g => {
       const xs = [G.px[0], G.px[G.px.length - 1]], zs = [G.pz[0], G.pz[G.pz.length - 1]];
       const pts = new Set();
       G.px.forEach(x => zs.forEach(z => pts.add(x + '|' + z)));
       G.pz.forEach(z => xs.forEach(x => pts.add(x + '|' + z)));
-      pts.forEach(k => { const [x, z] = k.split('|').map(Number); this.box(lg, M.post, 6, 2, 6, x, y0 - 1, z, false); });
-    }
-    if (Ls.includes('folie')) {
+      pts.forEach(k => { const [x, z] = k.split('|').map(Number); this.box(g, M.post, 6, 2, 6, x, y0 - 1, z, false); });
+    });
+    if (Ls.includes('folie')) layer('Teichfolie als Wanne', g => {
       const fm = L(0x2b2b2b), fw = G.oX + 0.6, fd = G.oZ + 0.6, fh = Math.min(20, H);
-      this.box(lg, fm, fw, 0.2, fd, 0, y0 + 0.1, 0, false);
-      this.box(lg, fm, fw, fh, 0.2, 0, y0 + fh / 2, fd / 2, false); this.box(lg, fm, fw, fh, 0.2, 0, y0 + fh / 2, -fd / 2, false);
-      this.box(lg, fm, 0.2, fh, fd, fw / 2, y0 + fh / 2, 0, false); this.box(lg, fm, 0.2, fh, fd, -fw / 2, y0 + fh / 2, 0, false);
-    }
-    if (Ls.includes('vlies')) this.box(lg, L(0xf1f0ea), G.oX + 20, 0.25, G.oZ + 20, 0, y0 - 0.02, 0, false);
-    if (Ls.includes('gitter')) {
+      this.box(g, fm, fw, 0.2, fd, 0, y0 + 0.1, 0, false);
+      this.box(g, fm, fw, fh, 0.2, 0, y0 + fh / 2, fd / 2, false); this.box(g, fm, fw, fh, 0.2, 0, y0 + fh / 2, -fd / 2, false);
+      this.box(g, fm, 0.2, fh, fd, fw / 2, y0 + fh / 2, 0, false); this.box(g, fm, 0.2, fh, fd, -fw / 2, y0 + fh / 2, 0, false);
+    });
+    if (Ls.includes('vlies')) layer('Unkrautvlies', g => this.box(g, L(0xf1f0ea), G.oX + 20, 0.25, G.oZ + 20, 0, y0 - 0.02, 0, false));
+    if (Ls.includes('gitter')) layer('Wühlmausgitter', g => {
       const P = [], w = G.oX + 10, d = G.oZ + 10, st = 4, y = y0 + 0.15;
       for (let x = -w / 2; x <= w / 2 + 0.01; x += st) P.push(v(x, y, -d / 2), v(x, y, d / 2));
       for (let z = -d / 2; z <= d / 2 + 0.01; z += st) P.push(v(-w / 2, y, z), v(w / 2, y, z));
-      this.lines(lg, P, new THREE.LineBasicMaterial({ color: 0x8e959b }));
-    }
-    if (R.drain > 0) {
-      const dm = L(0xc0703a);
-      const cellsAll = c.grid === 'bretter' ? G.cellsX.flatMap(x => G.cellsZ.map(z => [x, z, c.cell, c.cell])) : [[0, 0, G.iX, G.iZ]];
-      cellsAll.forEach(([x, z, w, d]) => {
-        this.box(lg, dm, w, R.drain, d, x, y0 + R.drain / 2, z, false);
-        if (Ls.includes('vlies2')) this.box(lg, L(0xf1f0ea), w, 0.2, d, x, y0 + R.drain + 0.1, z, false);
-      });
+      this.lines(g, P, new THREE.LineBasicMaterial({ color: 0x8e959b }));
+    });
+    const cellsAll = c.grid === 'bretter' ? G.cellsX.flatMap(x => G.cellsZ.map(z => [x, z, c.cell, c.cell])) : [[0, 0, G.iX, G.iZ]];
+    if (R.drain > 0) layer(`Drainage ${String(R.drain).replace('.', ',')} cm (Blähton)`, g => {
+      cellsAll.forEach(([x, z, w, d]) => this.box(g, L(0xc0703a), w, R.drain, d, x, y0 + R.drain / 2, z, false));
+    });
+    if (R.drain > 0 && Ls.includes('vlies2')) layer('Vlies als Trennlage', g => {
+      cellsAll.forEach(([x, z, w, d]) => this.box(g, L(0xf1f0ea), w, 0.2, d, x, y0 + R.drain + 0.1, z, false));
+    });
+    const soilH = H - c.soilGap - R.drain;
+    layer(`Pflanzerde ${Math.round(soilH)} cm`, g => {
+      cellsAll.forEach(([x, z, w, d]) => this.box(g, M.soil, w, soilH - 0.3, d, x, y0 + R.drain + 0.3 + (soilH - 0.3) / 2, z, false));
+      this.parts.soilEx = g;
+    });
+    {
+      const el = document.createElement('div'); el.className = 'lbl lbl-ground'; el.textContent = 'Untergrund: ' + gr.name;
+      const lab = new CSS2DObject(el); lab.position.set(G.LX / 2 + 8, gY, -G.LZ / 4); this.root.add(lab); this.groundLab = lab;
     }
 
     // ---- Erde & Pflanzen ----
@@ -170,11 +192,9 @@ export class KastenScene {
     const ys = H / 2 - c.soilGap, ps = c.cell / 30;
     if (c.grid === 'bretter') {
       G.cellsX.forEach((x, i) => G.cellsZ.forEach((z, j) => {
-        this.box(pg, M.soil, c.cell, ys - y0 - R.drain - 0.3, c.cell, x, (ys + y0 + R.drain + 0.3) / 2, z, false);
         this.plant(pg, (i * 3 + j * 5 + i * j) % 4, x, ys, z, ps);
       }));
     } else {
-      this.box(pg, M.soil, G.iX, ys - y0 - R.drain - 0.3, G.iZ, 0, (ys + y0 + R.drain + 0.3) / 2, 0, false);
       G.cellsX.forEach((x, i) => G.cellsZ.forEach((z, j) => this.plant(pg, (i * 3 + j * 5 + i * j) % 4, x, ys, z, ps)));
     }
 
@@ -228,6 +248,13 @@ export class KastenScene {
       }
     }
 
+    // Alles, was zum Kasten gehört, in eine Gruppe, die in der Explosionsansicht nach oben fährt
+    const boxG = new THREE.Group();
+    [...this.root.children].forEach(o => { if (!groundObjs.has(o) && o !== lg && o !== this.groundLab) boxG.add(o); });
+    this.root.add(boxG); this.parts.boxG = boxG;
+    { const el = document.createElement('div'); el.className = 'lbl lbl-ground'; el.textContent = 'Kasten';
+      this.boxLab = new CSS2DObject(el); this.boxLab.position.set(G.LX / 2 + 8, y0 + H / 2, -G.LZ / 4); boxG.add(this.boxLab); }
+
     // Kamera einmalig bzw. bei Größenänderung neu ausrichten
     const gTop = topY;
     const key = `${Math.round(G.LX)}|${Math.round(G.LZ)}|${Math.round(gTop)}|${this.cam.aspect.toFixed(2)}`;
@@ -243,6 +270,7 @@ export class KastenScene {
       this.controls.target.copy(target);
       this.cam.position.copy(target.clone().add(dir.multiplyScalar(dist)));
       this.firstFrame = false;
+      this.lastUp = 0; this.lastBack = 0;
     }
   }
 
@@ -255,6 +283,21 @@ export class KastenScene {
     if (P.xg) P.xg.position.y = A.ex * this.H * 1.1;
     if (P.ng) P.ng.visible = V.net && off;
     if (P.pg) P.pg.visible = V.plants && off;
+    const gap = Math.max(22, this.H * 1.2), st = this.stack || [];
+    st.forEach((l, i) => { l.g.position.y = A.ex * (i + 1) * gap; l.lab.visible = A.ex > 0.6; });
+    if (this.groundLab) this.groundLab.visible = A.ex > 0.6;
+    if (this.boxLab) this.boxLab.visible = A.ex > 0.6;
+    if (P.soilEx) P.soilEx.visible = V.plants || !off;
+    if (P.boxG) P.boxG.position.y = A.ex * (st.length + 1) * gap;
+    // Kamera beim Auseinanderziehen mitführen
+    const stackH = (st.length + 1) * gap + this.H * 1.1;
+    const up = A.ex * stackH * 0.5, back = A.ex * stackH * 0.8;
+    const dUp = up - (this.lastUp || 0), dBack = back - (this.lastBack || 0);
+    if (Math.abs(dUp) > 1e-4 || Math.abs(dBack) > 1e-4) {
+      const dir = this.cam.position.clone().sub(this.controls.target).normalize();
+      this.controls.target.y += dUp; this.cam.position.y += dUp; this.cam.position.addScaledVector(dir, dBack);
+      this.lastUp = up; this.lastBack = back;
+    }
     if (P.lid) {
       P.lid.rotation.x = -A.lid; P.lid.updateMatrixWorld();
       (this.chains || []).forEach(ch => {
@@ -267,5 +310,6 @@ export class KastenScene {
     (P.doors || []).forEach(d => { d.g.rotation.y = d.s * A.door; });
     this.controls.update();
     this.renderer.render(this.scene, this.cam);
+    this.labels.render(this.scene, this.cam);
   }
 }
