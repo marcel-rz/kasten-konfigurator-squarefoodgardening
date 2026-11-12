@@ -175,6 +175,8 @@ export function compute(cfg) {
   }
   const netM2 = netArea / 10000 * 1.15;
   if (hinges) hw.unshift({ label: c.removable ? 'Aushebescharniere / Steckscharniere (Tür und Deckel abnehmbar)' : 'Scharniere (verzinkt, ca. 40–50 mm)', qty: hinges, unit: 'Stk' });
+  // gleiche Latten (Bezeichnung und Länge) zusammenfassen
+  for (let i = laths.length - 1; i >= 0; i--) { const j = laths.findIndex(l => l.label === laths[i].label && Math.abs(l.len - laths[i].len) < 0.05); if (j < i) { laths[j].qty += laths[i].qty; laths.splice(i, 1); } }
   // gleiche Beschläge zusammenfassen (z. B. Vorreiber aus Wänden und Vorderseite)
   for (let i = hw.length - 1; i >= 0; i--) { const j = hw.findIndex(h => h.label === hw[i].label && h.unit === hw[i].unit); if (j < i) { hw[j].qty += hw[i].qty; hw.splice(i, 1); } }
 
@@ -257,7 +259,7 @@ function instructions(G, c, d) {
   if (c.net) {
     const nt = NET_TYPES[c.netType];
     S.push(c.removable
-      ? { t: 'Netzrahmen bauen (abnehmbar)', d: `${nt.name}, Maschenweite ca. ${fmt(c.mesh)} cm, insgesamt ca. ${fmt(d.netM2)} m² inkl. 15 % Zugabe. Jede feste Seite (hinten, links, rechts${c.front === 'netz' ? ', vorne' : ''}${c.top === 'fest' ? ', Dach' : ''}) bekommt einen eigenen Lattenrahmen, auf den das Netz straff mit ${nt.fix} gespannt wird. Die Rahmen werden zwischen die Pfosten gestellt und mit Vorreibern an Pfosten und Querlatten gehalten. Zum Abnehmen einfach die Vorreiber drehen und den Rahmen rausnehmen. Türen und Deckel hängen an Aushebescharnieren und lassen sich nach oben abheben. So kommt man an alles ran, z. B. zum Umgraben, und kann das Netz im Winter einlagern.` }
+      ? { t: 'Netzrahmen bauen (abnehmbar)', d: `${nt.name}, Maschenweite ca. ${fmt(c.mesh)} cm, insgesamt ca. ${fmt(d.netM2)} m² inkl. 15 % Zugabe. Jede feste Seite (hinten, links, rechts${c.front === 'netz' ? ', vorne' : ''}${c.top === 'fest' ? ', Dach' : ''}) bekommt einen eigenen Lattenrahmen, auf den das Netz straff mit ${nt.fix} gespannt wird. Vorher an jede Seite innen Anschlagleisten schrauben: unten auf die Auflageleiste, oben unter die Querlatte und senkrecht an die Pfosten. Unten kommt außen an die Kastenwand eine Auflageleiste, auf der der Rahmen steht. Den Rahmen von außen zwischen die Pfosten stellen, gegen die Anschläge drücken und mit den Vorreibern (2 oben an der Querlatte, 2 unten an der Auflageleiste) festdrehen. Zum Abnehmen die Vorreiber drehen und den Rahmen nach außen rausnehmen. Wichtig: Die Rahmen 3–5 mm kleiner bauen als die Öffnung, sonst klemmen sie, wenn das Holz bei Regen aufquillt. Türen und Deckel hängen an Aushebescharnieren und lassen sich nach oben abheben. So kommt man an alles ran, z. B. zum Umgraben, und kann das Netz im Winter einlagern.` }
       : { t: 'Netz anbringen', d: `${nt.name}, Maschenweite ca. ${fmt(c.mesh)} cm, insgesamt ca. ${fmt(d.netM2)} m² inkl. 15 % Zugabe. Hinten und an den Seiten${c.front === 'netz' ? ', vorne' : ''}${c.top === 'fest' ? ' und oben' : ''} straff spannen und mit ${nt.fix} befestigen. Unten an der Oberkante der Kastenbretter, oben an den Querlatten.` });
     if (d.frontP && d.frontP.step) S.push(d.frontP.step);
     if (d.topP && d.topP.step) S.push(d.topP.step);

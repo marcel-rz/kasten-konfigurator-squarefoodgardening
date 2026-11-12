@@ -32,10 +32,19 @@ const BRACE_TXT = ' Weil der Rahmen groß ist, kommt eine Diagonalstrebe rein (E
 const DOOR_BRACE_TXT = ' Wegen der Breite bekommt jeder Flügel eine Diagonalstrebe: unten an der Scharnierseite anfangen und schräg nach oben zur Schlossseite. So drückt das Gewicht die Strebe zusammen und die Tür hängt nicht durch.';
 
 // Fest stehendes Netzfeld: abnehmbar als eigener Rahmen mit Vorreibern, sonst direkt angetackert
-export function panel(name, w, h, c) {
+// wall = senkrechtes Feld zwischen den Pfosten: braucht Auflage unten und Anschläge innen
+export function panel(name, w, h, c, wall = true) {
   if (!c.removable) return { net: [N(w, h)] };
-  const p = frame(name, w, h, c);
+  const p = frame(name, w - 0.4, h - 0.4, c); // 4 mm Luft, damit nichts klemmt, wenn das Holz quillt
   p.hw = [{ label: 'Vorreiber (Drehriegel) für abnehmbare Netzrahmen', qty: Math.max(w, h) > 120 ? 6 : 4, unit: 'Stk' }];
+  if (wall) {
+    p.laths.push(
+      { label: 'Auflageleiste unten (außen an die Kastenwand)', len: w, qty: 1 },
+      { label: 'Anschlagleiste innen, waagerecht (unten und oben)', len: w, qty: 2 },
+      { label: 'Anschlagleiste innen, senkrecht (an den Pfosten)', len: h - 2 * c.lw, qty: 2 },
+    );
+    p.screws += 14;
+  }
   return p;
 }
 // Seiten- und Rückwand des Käfigs
@@ -184,7 +193,7 @@ export const TOPS = {
         net: [{ a: DZ * rh / 2, e: DZ + 2 * s }, { a: DZ * rh / 2, e: DZ + 2 * s }], hinges: h, screws: 12,
         hw: [{ label: 'Haken / Vorreiber für Dachklappe', qty: 1, unit: 'Stk' }, { label: 'Aufstellstab oder Kette', qty: 1, unit: 'Stk' },
           ...(c.removable ? [{ label: 'Vorreiber zum Abnehmen des ganzen Dachs', qty: 4, unit: 'Stk' }] : [])] },
-        panel('Dachfläche hinten', DX, s, c));
+        panel('Dachfläche hinten', DX, s, c, false));
       p.lid = { DX, DZ, rh, s };
       p.step = { t: 'Satteldach', d: `An beiden Giebelseiten je zwei Sparren (${f(s)} cm, Enden schräg auf Gehrung schneiden) von den Pfosten zum First schrauben und oben die Firstlatte (${f(DX)} cm) einsetzen. Die hintere Dachfläche und die beiden Giebeldreiecke fest bespannen. Die vordere Dachfläche ist ein eigener Rahmen ${f(DX)} × ${f(s)} cm, der mit ${h} Scharnieren an der Firstlatte hängt und nach oben aufklappt. Vorteil: ${f(rh)} cm mehr Höhe in der Mitte, Regen und Schnee rutschen ab.${c.removable ? ' Die Sparren werden nicht festgeschraubt, sondern mit 4 Vorreibern auf den Pfosten gehalten. So kann man das ganze Dach abheben.' : ''}` };
       return p;
@@ -208,7 +217,7 @@ export const TOPS = {
     name: 'Netz fest', movable: false,
     parts(c, G) {
       const DX = G.oX + 2 * c.ps, DZ = G.oZ + 2 * c.ps;
-      return { ...panel('Netzrahmen Dach', DX, DZ, c), step: null };
+      return { ...panel('Netzrahmen Dach', DX, DZ, c, false), step: null };
     },
   },
   offen: {
