@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Square-Foot-Kasten Konfigurator</title>
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<header>
+  <h1>Square-Foot-Kasten Konfigurator</h1>
+  <p>Hochbeet aus gesteckten Brettern (Halbierungsverbindung), optional mit Käfig, Netz, Klappdeckel und Türen. Alle Maße in cm.</p>
+</header>
+<main>
+  <form id="controls" autocomplete="off"></form>
+  <section id="viewer-wrap">
+    <div id="viewer" aria-label="3D-Ansicht des Kastens"></div>
+    <div class="toolbar" id="toolbar"></div>
+    <div class="stats" id="stats"></div>
+  </section>
+  <section id="output"></section>
+</main>
+<footer>P-Seminar Square Foot Gardening · Ziehen zum Drehen, Zwei-Finger/Mausrad zum Zoomen, Rechtsklick zum Verschieben.</footer>
+<div id="toast" role="status"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
