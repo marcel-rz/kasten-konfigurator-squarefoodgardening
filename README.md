@@ -2,7 +2,7 @@
 
 Webseite zum Planen eines Square-Foot-Gardening-Hochbeets aus gesteckten Brettern (Halbierungsverbindung) – entstanden im P-Seminar.
 
-Alles ist einstellbar: Anzahl und Größe der Felder, Brettmaße, Überstand, Innenraster, Eckpfosten mit Käfig, Netzart und Maschenweite, 7 Dachvarianten (Klappdeckel, zwei Klappflügel, Schiebedeckel, Satteldach, Bogendach, festes Netz, offen) und 6 Varianten für die Vorderseite (Doppeltür, Einzeltür, Klappe nach oben, Schiebetür, Netz-Rollo, festes Netz). Daraus erzeugt die Seite:
+Alles ist einstellbar: Anzahl und Größe der Felder, Brettmaße, Überstand, Innenraster, Eckpfosten mit Käfig, Netzart und Maschenweite, 10 Dachvarianten (Klappdeckel, zwei Klappflügel, Schiebedeckel, Doppel-Schiebedeckel, Satteldach mit einer oder zwei Klappen, Pultdach, Bogendach, festes Netz, offen) und 8 Varianten für die Vorderseite (Doppeltür, Einzeltür, Klappe nach oben, Klappe nach unten, Schiebetür, Doppel-Schiebefenster, Netz-Rollo, festes Netz). Daraus erzeugt die Seite:
 
 - ein drehbares **3D-Modell** (mit Explosionsansicht, Erde und Pflanzen, aufklappbarem Deckel und Türen)
 - eine **Materialliste** inkl. Einkaufsliste in Rohlängen, Beschlägen, Schrauben, Netzfläche und Erdmenge

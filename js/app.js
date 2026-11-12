@@ -1,6 +1,6 @@
 import { DEFAULTS, NET_TYPES, GROUNDS, compute, sanitize, fmt, toText, toCSV } from './calc.js';
 import { KastenScene } from './scene.js';
-import { FRONTS, TOPS } from './options.js';
+import { FRONTS, TOPS, roofExtra } from './options.js';
 import { NOT_SUITABLE } from './plants.js';
 
 // ---------- Formular-Schema ----------
@@ -29,7 +29,7 @@ const SCHEMA = [
     ['netType', 'Netzart', 'select', { options: Object.fromEntries(Object.entries(NET_TYPES).map(([k, v]) => [k, v.name])) }],
     ['mesh', 'Maschenweite', 'number', { min: 0.5, max: 10, step: 0.1 }],
     ['top', 'Dach', 'select', { options: Object.fromEntries(Object.entries(TOPS).map(([k, v]) => [k, v.name])) }],
-    ['roofH', 'Firsthöhe', 'number', { min: 10, max: 100, step: 5, hint: 'Sattel- und Bogendach' }],
+    ['roofH', 'Dachhöhe', 'number', { min: 10, max: 100, step: 5, hint: 'Sattel-, Pult- und Bogendach' }],
     ['chain', 'Haltekette am Deckel', 'checkbox'],
     ['removable', 'Netz komplett abnehmbar', 'checkbox'],
     ['front', 'Vorderseite', 'select', { options: Object.fromEntries(Object.entries(FRONTS).map(([k, v]) => [k, v.name])) }],
@@ -95,7 +95,7 @@ function syncDisabled() {
   f.elements.drain.disabled = !GROUNDS[c.ground].layers.includes('drainage');
   ['netType', 'mesh', 'top', 'front', 'removable'].forEach(k => f.elements[k].disabled = !c.net);
   f.elements.chain.disabled = !(c.net && c.top === 'klapp');
-  f.elements.roofH.disabled = !(c.net && (c.top === 'sattel' || c.top === 'tunnel'));
+  f.elements.roofH.disabled = !(c.net && roofExtra(c) > 0);
 }
 
 let timer;
@@ -115,7 +115,9 @@ function buildToolbar() {
       return;
     }
     const k = e.target.dataset.v; if (!k) return;
-    scene.view[k] = !scene.view[k];
+    const c = sanitize(cfg), cyc = (k === 'doors' && FRONTS[c.front].cycle) || (k === 'lid' && TOPS[c.top].cycle);
+    if (cyc) { const st = [0, 1, -1], i = st.indexOf(Number(scene.view[k]) || 0); scene.view[k] = st[(i + 1) % 3]; }
+    else scene.view[k] = !scene.view[k];
     if ((k === 'lid' || k === 'doors') && scene.view[k]) scene.view.net = true;
     markToolbar();
   };
@@ -125,6 +127,13 @@ function markToolbar(c = sanitize(cfg)) {
   document.querySelectorAll('#toolbar button').forEach(b => {
     const k = b.dataset.v;
     b.classList.toggle('on', k === 'net' && c.removable ? !scene.view.net : !!scene.view[k]);
+    if (k === 'doors' || k === 'lid') {
+      const cyc0 = k === 'doors' ? FRONTS[c.front].cycle : TOPS[c.top].cycle;
+      if (!cyc0 && typeof scene.view[k] === 'number') scene.view[k] = scene.view[k] !== 0;
+      const cyc = cyc0, st = Number(scene.view[k]) || 0, base = k === 'doors' ? 'Vorne' : 'Dach';
+      b.textContent = cyc ? (st === 0 ? `${base}: rechts öffnen` : st === 1 ? `${base}: links öffnen` : `${base} schließen`) : `${base} ${scene.view[k] ? 'schließen' : 'öffnen'}`;
+      b.classList.toggle('on', !!st || scene.view[k] === true);
+    }
     if (k === 'net') b.textContent = c.removable ? (scene.view.net ? 'Netz abnehmen' : 'Netz wieder dran') : 'Netz anzeigen';
     b.hidden = (k === 'lid' && !(c.net && TOPS[c.top].movable)) || (k === 'doors' && !(c.net && FRONTS[c.front].movable)) || (k === 'net' && !c.posts);
   });

@@ -121,6 +121,30 @@ export const FRONTS = {
       return p;
     },
   },
+  schiebe2: {
+    name: 'Doppel-Schiebefenster (links und rechts)', movable: true, cycle: true,
+    parts(c, G) {
+      const { W, FH } = frontGeom(c, G), w = W / 2 + 3;
+      const p = merge(frame('Schiebefenster', w, FH, c, 2), {
+        laths: [{ label: 'Führungsleiste oben/unten (3 Leisten = 2 Spuren)', len: W, qty: 6 }],
+        screws: 18,
+        hw: [{ label: 'Griff / Holzknauf', qty: 2, unit: 'Stk' }, { label: 'Gleitband oder Kerzenwachs für die Führung', qty: 1, unit: 'Stk' }] });
+      p.leaf = { w, h: FH };
+      p.step = { t: 'Doppel-Schiebefenster bauen', d: `Oben und unten vor die Pfosten je drei Führungsleisten (${f(W)} cm) mit kleinem Abstand schrauben, so entstehen zwei Spuren hintereinander. Zwei Rahmen ${f(w)} × ${f(FH)} cm bauen und bespannen, einer läuft in der hinteren, einer in der vorderen Spur. Beide lassen sich ganz nach links oder ganz nach rechts schieben: So kann man wahlweise die linke oder die rechte Hälfte komplett öffnen und kommt an jedes Feld ran. In der Mitte überlappen sie 6 cm, damit keine Lücke bleibt. Zum Abnehmen das Fenster oben in die tiefe Spur heben und unten herausschwenken.` };
+      return p;
+    },
+  },
+  klappeunten: {
+    name: 'Klappe nach unten (Ablage)', movable: true,
+    parts(c, G) {
+      const { W, FH } = frontGeom(c, G), w = W - 0.5, h = hingeCount(w);
+      const p = merge(frame('Klappenrahmen', w, FH, c), { hinges: h,
+        hw: [{ label: `Kette ${Math.ceil(FH * 1.45)} cm + 4 Schraubösen (hält die Klappe waagerecht)`, qty: 2, unit: 'Stk' }, { label: 'Vorreiber oben zum Schließen', qty: 2, unit: 'Stk' }] });
+      p.leaf = { w, h: FH };
+      p.step = { t: 'Klappe nach unten bauen', d: `Rahmen ${f(w)} × ${f(FH)} cm bauen und bespannen. Mit ${h} Scharnieren unten an die Auflageleiste schrauben, sodass die Klappe nach außen herunterklappt. Zwei Ketten von der Klappe zu den Pfosten halten sie waagerecht. Dann dient sie gleich als Ablage für Werkzeug und Ernte. Oben halten zwei Vorreiber die Klappe zu.` };
+      return p;
+    },
+  },
   rollo: {
     name: 'Netz-Rollo', movable: true,
     parts(c, G) {
@@ -199,6 +223,45 @@ export const TOPS = {
       return p;
     },
   },
+  sattel2: {
+    name: 'Satteldach (beide Seiten klappbar)', movable: true,
+    parts(c, G) {
+      const DX = G.oX + 2 * c.ps, DZ = G.oZ + 2 * c.ps, rh = c.roofH, s = Math.hypot(DZ / 2, rh), h = hingeCount(DX);
+      const p = merge(frame('Dachklappe', DX, s, c, 2), {
+        laths: [{ label: 'Sparren (Giebel)', len: s, qty: 4 }, { label: 'Firstlatte', len: DX, qty: 1 }],
+        net: [{ a: DZ * rh / 2, e: DZ + 2 * s }, { a: DZ * rh / 2, e: DZ + 2 * s }], hinges: 2 * h, screws: 12,
+        hw: [{ label: 'Haken / Vorreiber für Dachklappen', qty: 2, unit: 'Stk' }, { label: 'Aufstellstab oder Kette', qty: 2, unit: 'Stk' },
+          ...(c.removable ? [{ label: 'Vorreiber zum Abnehmen des ganzen Dachs', qty: 4, unit: 'Stk' }] : [])] });
+      p.lid = { DX, DZ, rh, s };
+      p.step = { t: 'Satteldach mit zwei Klappen', d: `An beiden Giebelseiten je zwei Sparren (${f(s)} cm, Enden schräg) zum First schrauben und die Firstlatte (${f(DX)} cm) einsetzen, Giebeldreiecke bespannen. Beide Dachflächen sind eigene Rahmen ${f(DX)} × ${f(s)} cm, die jeweils mit ${h} Scharnieren an der Firstlatte hängen. So kann man vorne und hinten aufklappen und kommt von beiden Seiten an alle Felder, auch wenn der Kasten frei steht. Jede Klappe bekommt einen Aufstellstab, damit sie offen bleibt.${c.removable ? ' Das ganze Dach sitzt mit 4 Vorreibern auf den Pfosten und lässt sich abheben.' : ''}` };
+      return p;
+    },
+  },
+  schiebe2: {
+    name: 'Doppel-Schiebedeckel (links und rechts)', movable: true, cycle: true,
+    parts(c, G) {
+      const DX = G.oX + 2 * c.ps, DZ = G.oZ + 2 * c.ps, w = DX / 2 + 3;
+      const p = merge(frame('Schiebedeckel', w, DZ, c, 2), {
+        laths: [{ label: 'Laufleiste vorne/hinten (2 Spuren)', len: DX, qty: 6 }, { label: 'Distanzleiste obere Spur', len: DX, qty: 2 }],
+        screws: 20, hw: [{ label: 'Griff', qty: 2, unit: 'Stk' }, { label: 'Anschlagklotz', qty: 4, unit: 'Stk' }] });
+      p.lid = { DX, DZ, w };
+      p.step = { t: 'Doppel-Schiebedeckel', d: `Auf die vordere und hintere Querlatte je drei Laufleisten (${f(DX)} cm) schrauben, die äußere Spur mit Distanzleisten etwas höher, so laufen zwei Deckel übereinander. Zwei Rahmen ${f(w)} × ${f(DZ)} cm bauen und bespannen. Jeder lässt sich nach links und rechts schieben, man kann also wahlweise die linke oder rechte Hälfte von oben öffnen. Anschlagklötze an den Enden verhindern, dass ein Deckel herausrutscht.` };
+      return p;
+    },
+  },
+  pult: {
+    name: 'Pultdach (nach vorne aufklappbar)', movable: true,
+    parts(c, G) {
+      const DX = G.oX + 2 * c.ps, DZ = G.oZ + 2 * c.ps, rh = c.roofH, s = Math.hypot(DZ, rh), h = hingeCount(DX);
+      const p = merge(frame('Pultdachklappe', DX, s, c), {
+        laths: [{ label: 'Querlatte hinten oben (Scharnierlatte)', len: DX, qty: 1 }, { label: 'Schräglatte seitlich', len: s, qty: 2 }],
+        net: [{ a: DZ * rh / 2, e: DZ + rh + s }, { a: DZ * rh / 2, e: DZ + rh + s }], hinges: h, screws: 14,
+        hw: [{ label: `Aufsatz-Kantholz ${f(c.ps)}×${f(c.ps)} cm, ${f(rh + 10)} cm (hinten an die Pfosten)`, qty: 2, unit: 'Stk' }, { label: 'Aufstellstab oder Kette', qty: 2, unit: 'Stk' }, { label: 'Haken / Vorreiber vorne', qty: 1, unit: 'Stk' }] });
+      p.lid = { DX, DZ, rh, s };
+      p.step = { t: 'Pultdach', d: `Hinten an beide Pfosten ein Aufsatz-Kantholz schrauben, sodass die Rückseite ${f(rh)} cm höher ist. Oben quer die Scharnierlatte (${f(DX)} cm) setzen und an den Seiten je eine Schräglatte von hinten oben nach vorne. Die Seitendreiecke fest bespannen. Die ganze Dachfläche ist ein Rahmen ${f(DX)} × ${f(s)} cm, der mit ${h} Scharnieren hinten hängt und nach vorne-oben aufklappt. Vorteil: Regen läuft nach vorne ab und man hat hinten mehr Platz für hohe Pflanzen wie Tomaten.` };
+      return p;
+    },
+  },
   tunnel: {
     name: 'Bogendach (Tunnel)', movable: false,
     parts(c, G) {
@@ -227,7 +290,7 @@ export const TOPS = {
 };
 
 export function roofExtra(c) {
-  return c.top === 'sattel' || c.top === 'tunnel' ? c.roofH : 0;
+  return ['sattel', 'sattel2', 'tunnel', 'pult'].includes(c.top) ? c.roofH : 0;
 }
 
 // Hinweis auf Diagonalstreben an die Anleitung hängen (Türen haben ihren eigenen Text)

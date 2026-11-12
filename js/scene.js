@@ -157,6 +157,29 @@ export class KastenScene {
       const x0 = rx / 2 - L.w;
       mv.push({ k: 'front', f: t => { g.position.x = x0 - t * (L.w - 4); } });
     }
+    if (c.front === 'schiebe2') {
+      const lt = c.lt;
+      [yb + 0.5, ytn - 0.5].forEach(y => [1, 2, 3].forEach(k => this.box(ng, M.lath, rx, 1, 0.6, 0, y, az + lt / 2 + k * (lt + 0.4) - 0.3)));
+      const mk = (x0, z) => { const g = new THREE.Group(); g.position.set(x0, yb, z); ng.add(g); this.vFrame(g, 0, L.w, 0, L.h, c, netMat, mesh); return g; };
+      const xl = -rx / 2, xr = rx / 2 - L.w, run = L.w - 6;
+      const gl = mk(xl, az + lt / 2 + 1 * (lt + 0.4) + 0.2), gr = mk(xr, az + lt / 2 + 2 * (lt + 0.4) + 0.2);
+      this.mesh(gl, sph, M.metal, 4, L.h / 2, lt, 1.3, 1.3, 1.3); this.mesh(gr, sph, M.metal, L.w - 4, L.h / 2, lt, 1.3, 1.3, 1.3);
+      mv.push({ k: 'front', f: t => { gr.position.x = xr - Math.max(0, t) * run; gl.position.x = xl + Math.max(0, -t) * run; } });
+    }
+    if (c.front === 'klappeunten') {
+      const g = new THREE.Group(); g.position.set(0, yb, az + c.lt); ng.add(g);
+      this.vFrame(g, -L.w / 2, L.w / 2, 0, L.h, c, netMat, mesh);
+      [-0.3, 0.3].forEach(k => this.hinge(g, k * L.w, 0, 0, 'x'));
+      const chains = [-1, 1].map(sx => { const cl = new THREE.Line(new THREE.BufferGeometry().setFromPoints([v(0, 0, 0), v(0, 0, 0)]), chainMat); ng.add(cl); return { cl, sx }; });
+      mv.push({ k: 'front', f: t => {
+        const a = t * 1.5; g.rotation.x = a;
+        chains.forEach(({ cl, sx }) => {
+          cl.visible = t > 0.3;
+          const tip = v(sx * (L.w / 2 - 2), yb + L.h * Math.cos(a), az + c.lt + L.h * Math.sin(a));
+          const ar = cl.geometry.attributes.position; ar.setXYZ(0, tip.x, tip.y, tip.z); ar.setXYZ(1, sx * (rx / 2 + 1), ytn - 2, az + c.lt); ar.needsUpdate = true;
+        });
+      } });
+    }
     if (c.front === 'rollo') {
       const g = new THREE.Group(); g.position.set(0, ytn, az + 0.6); ng.add(g);
       const P = [], nu = Math.round(rx / mesh), nv = 14;
@@ -236,6 +259,51 @@ export class KastenScene {
       const nh = DX > 150 ? 3 : 2;
       for (let k = 0; k < nh; k++) this.hinge(ng, -DX * 0.3 + k * (DX * 0.6) / (nh - 1), yr, 0, 'x');
       mv.push({ k: 'top', f: t => { flap.rotation.x = al - t * (al + 1.25); } });
+    }
+    if (c.top === 'sattel2') {
+      const { rh, s } = T.lid, al = Math.atan2(rh, DZ / 2), yr = yt + rh;
+      [-1, 1].forEach(sx => {
+        const x = sx * (DX / 2 - lw / 2);
+        this.beam(ng, v(x, yt, -DZ / 2), v(x, yr, 0), c); this.beam(ng, v(x, yt, DZ / 2), v(x, yr, 0), c);
+        const P = [], nz = Math.round(DZ / mesh);
+        for (let i = 1; i < nz; i++) { const z = -DZ / 2 + i * DZ / nz, top = yt + rh * (1 - Math.abs(z) / (DZ / 2)); P.push(v(x, yt, z), v(x, top, z)); }
+        const ny = Math.round(rh / mesh);
+        for (let j = 1; j < ny; j++) { const y = yt + j * rh / ny, half = DZ / 2 * (1 - j / ny); P.push(v(x, y, -half), v(x, y, half)); }
+        this.lines(ng, P, netMat);
+      });
+      this.box(ng, M.lath, DX, lw, c.lt, 0, yr - lw / 2, 0);
+      const front = new THREE.Group(); front.position.set(0, yr, 0); ng.add(front); this.hFrame(front, -DX / 2, DX / 2, 0, s, c, netMat, mesh);
+      const back = new THREE.Group(); back.position.set(0, yr, 0); ng.add(back); this.hFrame(back, -DX / 2, DX / 2, -s, 0, c, netMat, mesh);
+      const nh = DX > 150 ? 3 : 2;
+      for (let k = 0; k < nh; k++) this.hinge(ng, -DX * 0.3 + k * (DX * 0.6) / (nh - 1), yr, 0, 'x');
+      mv.push({ k: 'top', f: t => { front.rotation.x = al - t * (al + 1.1); back.rotation.x = -al + t * (al + 1.1); } });
+    }
+    if (c.top === 'schiebe2') {
+      const w = T.lid.w, raise = c.lt + 0.6, run = w - 6;
+      [-1, 1].forEach(sz => this.box(ng, M.lath, DX, raise, lw, 0, yt + raise / 2, sz * (DZ / 2 - lw / 2)));
+      const gl = new THREE.Group(); gl.position.set(-DX / 2, yt, 0); ng.add(gl); this.hFrame(gl, 0, w, -DZ / 2 + lw + 0.3, DZ / 2 - lw - 0.3, c, netMat, mesh);
+      const gr = new THREE.Group(); gr.position.set(DX / 2 - w, yt + raise, 0); ng.add(gr); this.hFrame(gr, 0, w, -DZ / 2, DZ / 2, c, netMat, mesh);
+      this.mesh(gl, sph, M.metal, 4, c.lt + 1, 0, 1.3, 1.3, 1.3); this.mesh(gr, sph, M.metal, w - 4, c.lt + 1, 0, 1.3, 1.3, 1.3);
+      mv.push({ k: 'top', f: t => { gr.position.x = DX / 2 - w - Math.max(0, t) * run; gl.position.x = -DX / 2 + Math.max(0, -t) * run; } });
+    }
+    if (c.top === 'pult') {
+      const { rh, s } = T.lid, al = Math.atan2(rh, DZ), yb2 = yt + rh;
+      [-1, 1].forEach(sx => {
+        this.box(ng, M.post, c.ps, rh, c.ps, sx * ax, yt + rh / 2, -az);
+        const x = sx * (DX / 2 - lw / 2);
+        this.beam(ng, v(x, yb2, -DZ / 2), v(x, yt, DZ / 2), c);
+        const P = [], nz = Math.round(DZ / mesh);
+        for (let i = 1; i < nz; i++) { const z = -DZ / 2 + i * DZ / nz, top = yt + rh * (1 - (z + DZ / 2) / DZ); P.push(v(sx * ax, yt, z), v(sx * ax, top, z)); }
+        const ny = Math.round(rh / mesh);
+        for (let j = 1; j < ny; j++) { const y = yt + j * rh / ny, zf = -DZ / 2 + DZ * (1 - j / ny); P.push(v(sx * ax, y, -DZ / 2), v(sx * ax, y, zf)); }
+        this.lines(ng, P, netMat);
+      });
+      this.box(ng, M.lath, DX, lw, c.lt, 0, yb2 - lw / 2, -DZ / 2);
+      const flap = new THREE.Group(); flap.position.set(0, yb2, -DZ / 2); ng.add(flap);
+      this.hFrame(flap, -DX / 2, DX / 2, 0, s, c, netMat, mesh);
+      const nh = DX > 150 ? 3 : 2;
+      for (let k = 0; k < nh; k++) this.hinge(ng, -DX * 0.3 + k * (DX * 0.6) / (nh - 1), yb2, -DZ / 2, 'x');
+      mv.push({ k: 'top', f: t => { flap.rotation.x = al - t * (al + 1.45); } });
     }
     if (c.top === 'tunnel') {
       const { rh, n } = T.lid, a = DZ / 2;
@@ -430,8 +498,9 @@ export class KastenScene {
   tick() {
     const A = this.anim, V = this.view, P = this.parts || {};
     A.ex += ((V.explode ? 1 : 0) - A.ex) * 0.12;
-    A.lid += ((V.lid ? 1 : 0) - A.lid) * 0.08;
-    A.door += ((V.doors ? 1 : 0) - A.door) * 0.08;
+    const tgt = x => (typeof x === 'number' ? x : x ? 1 : 0);
+    A.lid += (tgt(V.lid) - A.lid) * 0.08;
+    A.door += (tgt(V.doors) - A.door) * 0.08;
     A.rem = (A.rem || 0) + ((V.net ? 0 : 1) - (A.rem || 0)) * 0.08;
     const off = A.ex < 0.05;
     if (P.xg) P.xg.position.y = A.ex * this.H * 1.1;
