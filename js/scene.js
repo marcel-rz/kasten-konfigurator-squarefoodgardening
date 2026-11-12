@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { NET_TYPES } from './calc.js';
+import { NET_TYPES, GROUNDS } from './calc.js';
 
 const v = (a, b, c) => new THREE.Vector3(a, b, c);
 const L = c => new THREE.MeshLambertMaterial({ color: c });
@@ -121,16 +121,60 @@ export class KastenScene {
       this.lines(this.root, P, stringMat);
     }
 
+    // ---- Untergrund und Bodenaufbau ----
+    const gr = GROUNDS[c.ground], Ls = gr.layers, gY = y0 - (Ls.includes('kloetze') ? 2 : 0);
+    const gSize = Math.max(G.LX, G.LZ) * 2.6;
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(gSize, gSize), L(gr.color));
+    plane.rotation.x = -Math.PI / 2; plane.position.y = gY - 0.15; this.root.add(plane);
+    const tile = c.ground === 'pflaster' ? 30 : c.ground === 'holz' ? 14 : 0;
+    if (tile) {
+      const P = [], n = Math.floor(gSize / 2 / tile), y = gY - 0.1;
+      for (let i = -n; i <= n; i++) {
+        P.push(v(i * tile, y, -gSize / 2), v(i * tile, y, gSize / 2));
+        if (c.ground === 'pflaster') P.push(v(-gSize / 2, y, i * tile), v(gSize / 2, y, i * tile));
+      }
+      this.lines(this.root, P, new THREE.LineBasicMaterial({ color: 0x5f5a50, transparent: true, opacity: 0.5 }));
+    }
+    const lg = new THREE.Group(); this.root.add(lg);
+    if (Ls.includes('kloetze')) {
+      const xs = [G.px[0], G.px[G.px.length - 1]], zs = [G.pz[0], G.pz[G.pz.length - 1]];
+      const pts = new Set();
+      G.px.forEach(x => zs.forEach(z => pts.add(x + '|' + z)));
+      G.pz.forEach(z => xs.forEach(x => pts.add(x + '|' + z)));
+      pts.forEach(k => { const [x, z] = k.split('|').map(Number); this.box(lg, M.post, 6, 2, 6, x, y0 - 1, z, false); });
+    }
+    if (Ls.includes('folie')) {
+      const fm = L(0x2b2b2b), fw = G.oX + 0.6, fd = G.oZ + 0.6, fh = Math.min(20, H);
+      this.box(lg, fm, fw, 0.2, fd, 0, y0 + 0.1, 0, false);
+      this.box(lg, fm, fw, fh, 0.2, 0, y0 + fh / 2, fd / 2, false); this.box(lg, fm, fw, fh, 0.2, 0, y0 + fh / 2, -fd / 2, false);
+      this.box(lg, fm, 0.2, fh, fd, fw / 2, y0 + fh / 2, 0, false); this.box(lg, fm, 0.2, fh, fd, -fw / 2, y0 + fh / 2, 0, false);
+    }
+    if (Ls.includes('vlies')) this.box(lg, L(0xf1f0ea), G.oX + 20, 0.25, G.oZ + 20, 0, y0 - 0.02, 0, false);
+    if (Ls.includes('gitter')) {
+      const P = [], w = G.oX + 10, d = G.oZ + 10, st = 4, y = y0 + 0.15;
+      for (let x = -w / 2; x <= w / 2 + 0.01; x += st) P.push(v(x, y, -d / 2), v(x, y, d / 2));
+      for (let z = -d / 2; z <= d / 2 + 0.01; z += st) P.push(v(-w / 2, y, z), v(w / 2, y, z));
+      this.lines(lg, P, new THREE.LineBasicMaterial({ color: 0x8e959b }));
+    }
+    if (R.drain > 0) {
+      const dm = L(0xc0703a);
+      const cellsAll = c.grid === 'bretter' ? G.cellsX.flatMap(x => G.cellsZ.map(z => [x, z, c.cell, c.cell])) : [[0, 0, G.iX, G.iZ]];
+      cellsAll.forEach(([x, z, w, d]) => {
+        this.box(lg, dm, w, R.drain, d, x, y0 + R.drain / 2, z, false);
+        if (Ls.includes('vlies2')) this.box(lg, L(0xf1f0ea), w, 0.2, d, x, y0 + R.drain + 0.1, z, false);
+      });
+    }
+
     // ---- Erde & Pflanzen ----
     const pg = new THREE.Group(); this.root.add(pg); this.parts.pg = pg;
     const ys = H / 2 - c.soilGap, ps = c.cell / 30;
     if (c.grid === 'bretter') {
       G.cellsX.forEach((x, i) => G.cellsZ.forEach((z, j) => {
-        this.box(pg, M.soil, c.cell, ys - y0, c.cell, x, (ys + y0) / 2, z, false);
+        this.box(pg, M.soil, c.cell, ys - y0 - R.drain - 0.3, c.cell, x, (ys + y0 + R.drain + 0.3) / 2, z, false);
         this.plant(pg, (i * 3 + j * 5 + i * j) % 4, x, ys, z, ps);
       }));
     } else {
-      this.box(pg, M.soil, G.iX, ys - y0, G.iZ, 0, (ys + y0) / 2, 0, false);
+      this.box(pg, M.soil, G.iX, ys - y0 - R.drain - 0.3, G.iZ, 0, (ys + y0 + R.drain + 0.3) / 2, 0, false);
       G.cellsX.forEach((x, i) => G.cellsZ.forEach((z, j) => this.plant(pg, (i * 3 + j * 5 + i * j) % 4, x, ys, z, ps)));
     }
 

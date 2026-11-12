@@ -8,6 +8,7 @@ Alles ist einstellbar: Anzahl und Größe der Felder, Brettmaße, Überstand, In
 - eine **Materialliste** inkl. Einkaufsliste in Rohlängen, Beschlägen, Schrauben, Netzfläche und Erdmenge
 - einen **Zuschnittplan** mit Kerbpositionen pro Brett und Schnittplan auf Rohlänge
 - eine **Bauanleitung**, die zur Konfiguration passt
+- den **Bodenaufbau** je nach Untergrund (Rasen, Erde, Kies, Pflaster, Beton, Holzterrasse): Wühlmausgitter, Vlies, Drainage oder Folienwanne
 - Export als Text, CSV, Druckansicht und Link mit der eigenen Konfiguration
 
 ## Benutzen

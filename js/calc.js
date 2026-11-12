@@ -13,6 +13,38 @@ export const DEFAULTS = {
   top: 'klapp',               // 'fest' | 'klapp' | 'offen'
   chain: true,
   front: 'doppeltuer',        // 'netz' | 'tuer' | 'doppeltuer'
+  ground: 'rasen',            // Schlüssel aus GROUNDS
+  drain: 5,                   // Drainageschicht in cm (nur wo nötig)
+};
+
+// Untergrund: was unter den Kasten kommt. soft = Pfosten können in den Boden.
+export const GROUNDS = {
+  rasen: { name: 'Rasen / Wiese', soft: true, color: 0x6f9e4a,
+    prep: 'Grasnarbe in der Kastengröße mit dem Spaten abstechen (die Soden umgedreht unten in den Kasten legen geht auch, das gibt Nährstoffe). Fläche mit der Wasserwaage eben machen.',
+    layers: ['gitter'] },
+  erde: { name: 'Erde / Beet', soft: true, color: 0x7a5636,
+    prep: 'Unkraut und Wurzeln entfernen, Boden lockern und eben harken.',
+    layers: ['gitter'] },
+  kies: { name: 'Kies / Schotter', soft: false, color: 0xb9b3a6,
+    prep: 'Kies glatt ziehen und eben machen. Wühlmäuse kommen durch Kies kaum, aber Unkraut wächst durch.',
+    layers: ['vlies'] },
+  pflaster: { name: 'Pflaster / Platten', soft: false, color: 0xa9a49a,
+    prep: 'Platten fegen. Der Kasten bleibt ohne Boden, damit Wasser über die Fugen ablaufen kann. Erde färbt Platten, das Vlies verhindert das meiste.',
+    layers: ['vlies', 'drainage'] },
+  beton: { name: 'Beton / Asphalt', soft: false, color: 0x9a9893,
+    prep: 'Fläche fegen und auf Gefälle prüfen: Das Wasser muss zu einer Seite ablaufen können. Den Kasten nicht in eine Senke stellen, sonst steht unten Wasser.',
+    layers: ['vlies', 'drainage'] },
+  holz: { name: 'Holzterrasse / Balkon', soft: false, color: 0xa5764a,
+    prep: 'Tragfähigkeit prüfen (Gewicht siehe Hinweise). Den Kasten auf Unterlegklötze stellen, damit der Terrassenboden darunter trocknen kann und nicht fault.',
+    layers: ['folie', 'drainage', 'vlies2', 'kloetze'] },
+};
+export const LAYERS = {
+  gitter: 'Wühlmausgitter verzinkt, Masche 13 mm',
+  vlies: 'Unkrautvlies (wasserdurchlässig)',
+  vlies2: 'Vlies als Trennlage über der Drainage',
+  drainage: 'Blähton oder grober Kies (Drainage)',
+  folie: 'Teichfolie (Wanne gegen Nässe)',
+  kloetze: 'Unterlegklötze (Kunststoff/Hartholz, ca. 2 cm)',
 };
 
 export const NET_TYPES = {
@@ -37,6 +69,9 @@ export function sanitize(c) {
   clamp('ps', 3, 15); clamp('cageH', 20, 200); clamp('lw', 1.5, 8); clamp('lt', 1, 6); clamp('mesh', 0.5, 10);
   o.postGround = Math.min(100, Math.max(0, Number(o.postGround) || 0));
   o.posts = !!o.posts; o.chain = !!o.chain;
+  if (!GROUNDS[o.ground]) o.ground = DEFAULTS.ground;
+  if (!GROUNDS[o.ground].soft) o.postGround = 0;
+  o.drain = Math.min(20, Math.max(0, Number(o.drain) || 0));
   o.net = o.posts && !!o.net;
   if (!NET_TYPES[o.netType]) o.netType = DEFAULTS.netType;
   if (!['bretter', 'schnur', 'keins'].includes(o.grid)) o.grid = DEFAULTS.grid;
@@ -178,7 +213,27 @@ export function compute(cfg) {
     warn.push(`${p.tooLong[0].label} (${fmt(p.tooLong[0].len)} cm) ist länger als die Rohlänge von ${fmt(c.stock)} cm. Längere Bretter kaufen oder stoßen.`));
 
   // ---------- Kennzahlen ----------
-  const soilL = c.nx * c.nz * c.cell * c.cell * (c.h - c.soilGap) / 1000;
+  const gr = GROUNDS[c.ground];
+  const drain = gr.layers.includes('drainage') ? Math.min(c.drain, Math.max(0, c.h - c.soilGap - 5)) : 0;
+  const cellArea = c.nx * c.nz * c.cell * c.cell;
+  const soilL = cellArea * (c.h - c.soilGap - drain) / 1000;
+  const drainL = cellArea * drain / 1000;
+  const ground = [];
+  const m2 = (w, d) => Math.ceil(w * d / 10000 * 1.05 * 10) / 10;
+  gr.layers.forEach(k => {
+    if (k === 'gitter') ground.push({ label: LAYERS.gitter, qty: m2(G.oX + 10, G.oZ + 10), unit: 'm²', note: `Zuschnitt ${fmt(G.oX + 10)} × ${fmt(G.oZ + 10)} cm` });
+    if (k === 'vlies') ground.push({ label: LAYERS.vlies, qty: m2(G.oX + 20, G.oZ + 20), unit: 'm²', note: `Zuschnitt ${fmt(G.oX + 20)} × ${fmt(G.oZ + 20)} cm` });
+    if (k === 'vlies2') ground.push({ label: LAYERS.vlies2, qty: m2(G.iX, G.iZ), unit: 'm²', note: 'pro Feld zuschneiden' });
+    if (k === 'drainage' && drainL) ground.push({ label: LAYERS.drainage, qty: Math.ceil(drainL), unit: 'l', note: `${fmt(drain)} cm Schicht` });
+    if (k === 'folie') ground.push({ label: LAYERS.folie, qty: m2(G.oX + 40, G.oZ + 40), unit: 'm²', note: `Zuschnitt ${fmt(G.oX + 40)} × ${fmt(G.oZ + 40)} cm, außen 20 cm hochgezogen` });
+    if (k === 'kloetze') ground.push({ label: LAYERS.kloetze, qty: 2 * (G.px.length + G.pz.length) - 4, unit: 'Stk', note: 'unter jede Brettkreuzung am Rand' });
+  });
+  ground.push({ label: 'Noppenfolie für die Innenwände', qty: m2(2 * (G.iX + G.iZ), c.h), unit: 'm²', note: 'schützt das Holz vor nasser Erde' });
+  const weight = Math.round(soilL * 1.3 + drainL * 0.5);
+  if (!gr.soft && cfg.postGround > 0) warn.push('Auf festem Untergrund können die Pfosten nicht in den Boden. „Pfosten in den Boden“ wird ignoriert.');
+  if (c.ground === 'holz') warn.push(`Gefüllt und nass wiegt der Kasten ca. ${weight} kg. Bei Balkonen unbedingt die Traglast prüfen.`);
+  if (gr.layers.includes('drainage') && drain < c.drain) warn.push(`Der Kasten ist zu flach für ${fmt(c.drain)} cm Drainage. Es bleiben nur ${fmt(drain)} cm.`);
+  if (gr.layers.includes('drainage') && c.h - c.soilGap - drain < 15) warn.push('Weniger als 15 cm Erde: Für Wurzelgemüse wie Karotten zu wenig.');
   const diag = Math.hypot(G.oX, G.oZ);
   const boardM = boardTypes.reduce((s, b) => s + b.len * b.qty, 0) / 100;
   if (c.posts && c.ov < c.ps) warn.push(`Der Überstand (${fmt(c.ov)} cm) ist kleiner als der Pfosten (${fmt(c.ps)} cm). Der Pfosten liegt nur teilweise an den Brettenden an.`);
@@ -189,8 +244,8 @@ export function compute(cfg) {
 
   return {
     G, c, warn, boardTypes, laths, hw, doorLeaf, lidDX, lidDZ, chainLen,
-    netM2, soilL, diag, boardM, boardCut, lathCut, postCut,
-    steps: instructions(G, c, { boardTypes, doorLeaf, soilL, diag, netM2, lidDX }),
+    netM2, soilL, drainL, drain, ground, weight, diag, boardM, boardCut, lathCut, postCut,
+    steps: instructions(G, c, { boardTypes, doorLeaf, soilL, diag, netM2, lidDX, ground, drain }),
   };
 }
 
@@ -207,7 +262,7 @@ function instructions(G, c, d) {
   }));
   S.push({ t: 'Kerben sägen', d: `An beiden Rissen bis zur halben Höhe (${fmt(c.h / 2)} cm) einsägen, dazwischen 2–3 Entlastungsschnitte, dann mit dem Stechbeitel ausstemmen. Erst ein Kerbenpaar zur Probe zusammenstecken: Es soll stramm, aber ohne Hammer gehen.` });
   S.push({ t: 'Zusammenstecken', d: `Die Querbretter mit den Kerben nach oben parallel hinlegen, dann die Längsbretter mit den Kerben nach unten von oben einstecken.${d.boardTypes[0].halfFlip ? ' Da alle Bretter gleich sind, wird einfach die Hälfte umgedreht.' : ''} Rechtwinkligkeit prüfen: Beide Diagonalen der Außenwände müssen ${fmt(d.diag)} cm lang sein.` });
-  S.push({ t: 'Kasten sichern', d: 'An den vier Außenecken je eine Schraube von oben durch die Verbindung, optional vorher wasserfesten Leim (D3) in die Kerben. Innen die Wände mit Noppenfolie auskleiden (nicht den Boden), unten ein Wühlmausgitter antackern.' });
+  S.push({ t: 'Kasten sichern', d: 'An den vier Außenecken je eine Schraube von oben durch die Verbindung, optional vorher wasserfesten Leim (D3) in die Kerben. Die Innenwände mit Noppenfolie auskleiden (Noppen zum Holz), oben ein paar cm unter der Kante festtackern.' });
   if (c.grid === 'schnur') S.push({ t: 'Raster spannen', d: `Oben an den Wänden alle ${fmt(c.cell)} cm einen Nagel oder eine Schraubenöse setzen und die Schnur in beide Richtungen spannen.` });
   if (c.posts) {
     S.push({ t: 'Pfosten setzen', d: `4 Pfosten ${fmt(c.ps)}×${fmt(c.ps)} cm auf ${fmt(G.postLen)} cm ablängen${c.postGround ? `, davon ${fmt(c.postGround)} cm in den Boden` : ''}. Jeder Pfosten kommt in die Ecke, die die überstehenden Brettenden bilden, und wird von zwei Seiten mit je 2 Schrauben angeschraubt. Mit der Wasserwaage senkrecht ausrichten.` });
@@ -222,7 +277,18 @@ function instructions(G, c, d) {
     }
     if (c.top === 'klapp') S.push({ t: 'Klappdeckel', d: `Rahmen ${fmt(d.lidDX)}×${fmt(G.oZ + 2 * c.ps)} cm aus Latten bauen und bespannen. Mit ${d.lidDX > 150 ? 3 : 2} Scharnieren an der hinteren Querlatte befestigen.${c.chain ? ' Links und rechts eine Kette vom Deckel zum hinteren Pfosten, damit er offen nicht nach hinten kippt.' : ''} Vorne ein Haken, damit Wind ihn nicht aufreißt.` });
   }
-  S.push({ t: 'Aufstellen und befüllen', d: `Einen ebenen, sonnigen Platz wählen. Ca. ${Math.round(d.soilL)} Liter Erde einfüllen (bis ${fmt(c.soilGap)} cm unter den Rand). Klassische Square-Foot-Mischung: je ein Drittel Kompost, Torfersatz (z. B. Kokos) und Vermiculit. Dann pro Feld eine Kultur pflanzen.` });
+  const gr = GROUNDS[c.ground];
+  S.push({ t: `Untergrund vorbereiten (${gr.name})`, d: 'Sonnigen Platz wählen. ' + gr.prep });
+  const L = gr.layers, parts = [];
+  if (L.includes('kloetze')) parts.push('Unterlegklötze unter die Brettkreuzungen am Rand legen');
+  if (L.includes('folie')) parts.push(`Teichfolie unterlegen, den Kasten daraufstellen und die Folie außen ca. 20 cm hochziehen und antackern. An der tiefsten Ecke 2–3 kleine Löcher stechen und eine Schale darunterstellen, damit Staunässe ablaufen kann`);
+  if (L.includes('gitter')) parts.push('Wühlmausgitter flach hinlegen, den Kasten genau daraufstellen und das Gitter rundum von außen an die Unterkante der Bretter tackern. Wichtig: keine Lücke an den Rändern, sonst kommen die Mäuse trotzdem rein');
+  if (L.includes('vlies')) parts.push('Unkrautvlies hinlegen (rundum 10 cm größer als der Kasten) und den Kasten daraufstellen');
+  if (L.includes('drainage') && d.drain) parts.push(`in jedes Feld ${fmt(d.drain)} cm Blähton oder groben Kies füllen`);
+  if (L.includes('vlies2')) parts.push('darüber Vlies als Trennlage, damit die Erde nicht in die Drainage gespült wird');
+  if (c.posts && c.postGround && gr.soft) parts.push(`die Pfosten ${fmt(c.postGround)} cm tief eingraben bzw. mit Einschlaghülsen setzen`);
+  S.push({ t: 'Bodenaufbau', d: parts.map(p => p[0].toUpperCase() + p.slice(1) + '.').join(' ') });
+  S.push({ t: 'Befüllen', d: `Ca. ${Math.round(d.soilL)} Liter Erde einfüllen (bis ${fmt(c.soilGap)} cm unter den Rand). Klassische Square-Foot-Mischung: je ein Drittel Kompost, Torfersatz (z. B. Kokos) und Vermiculit. Dann pro Feld eine Kultur pflanzen.` });
   return S;
 }
 
@@ -239,6 +305,8 @@ export function toText(R) {
   if (c.net) L.push(`- ${NET_TYPES[c.netType].name}: ca. ${fmt(R.netM2)} m²`);
   R.hw.forEach(h => L.push(`- ${h.qty} ${h.unit} ${h.label}`));
   L.push(`- Erde: ca. ${Math.round(R.soilL)} l`);
+  L.push('', `UNTERGRUND: ${GROUNDS[c.ground].name}`);
+  R.ground.forEach(g => L.push(`- ${g.qty} ${g.unit} ${g.label} (${g.note})`));
   L.push('', 'ZUSCHNITT / KERBEN');
   R.boardTypes.forEach(b => L.push(`${b.label} (${fmt(b.len)} cm): Kerben ${fmt(c.t + c.play)} breit, ${fmt(c.h / 2)} tief ab ` + b.notches.map(n => fmt(n.from)).join(', ') + ' cm'));
   L.push('', 'BAUANLEITUNG');
@@ -255,5 +323,6 @@ export function toCSV(R) {
   if (c.net) rows.push([NET_TYPES[c.netType].name, fmt(R.netM2) + ' m²', '', '', 'inkl. 15 % Zugabe']);
   R.hw.forEach(h => rows.push([h.label, `${h.qty} ${h.unit}`, '', '', '']));
   rows.push(['Erde', Math.round(R.soilL) + ' l', '', '', '']);
+  R.ground.forEach(g => rows.push([g.label, `${g.qty} ${g.unit}`, '', '', g.note]));
   return rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
 }

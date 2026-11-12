@@ -30,7 +30,7 @@ button.on { background: var(--accent); color: var(--accent-ink); border-color: v
 @media (max-width: 860px) { #viewer-wrap { position: static; } #viewer { height: 52vh; } }
 #viewer { height: min(62vh, 560px); min-height: 320px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--card); overflow: hidden; touch-action: none; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 6px; }
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 10px; }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
 .stat span { display: block; font-size: 12px; color: var(--muted); }
 .stat b { font-size: 18px; font-weight: 600; }

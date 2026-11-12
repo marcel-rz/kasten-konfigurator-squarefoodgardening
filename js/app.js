@@ -1,4 +1,4 @@
-import { DEFAULTS, NET_TYPES, compute, sanitize, fmt, toText, toCSV } from './calc.js';
+import { DEFAULTS, NET_TYPES, GROUNDS, compute, sanitize, fmt, toText, toCSV } from './calc.js';
 import { KastenScene } from './scene.js';
 
 // ---------- Formular-Schema ----------
@@ -29,6 +29,10 @@ const SCHEMA = [
     ['top', 'Oben', 'select', { options: { klapp: 'Klappdeckel', fest: 'Netz fest', offen: 'Offen' } }],
     ['chain', 'Haltekette am Deckel', 'checkbox'],
     ['front', 'Vorderseite', 'select', { options: { doppeltuer: 'Doppeltür', tuer: 'Einzeltür', netz: 'Netz fest' } }],
+  ]},
+  { title: 'Untergrund', fields: [
+    ['ground', 'Worauf steht der Kasten?', 'select', { options: Object.fromEntries(Object.entries(GROUNDS).map(([k, v]) => [k, v.name])) }],
+    ['drain', 'Drainageschicht', 'number', { min: 0, max: 20, step: 1, hint: 'nur auf festem Boden' }],
   ]},
   { title: 'Zuschnitt', fields: [
     ['stock', 'Rohlänge Bretter/Latten', 'number', { min: 50, max: 600, step: 10 }],
@@ -83,6 +87,8 @@ function syncDisabled() {
   const f = $('#controls'), c = sanitize(cfg);
   f.querySelector('fieldset[data-g="2"]').disabled = !c.posts;
   ['ps', 'cageH', 'postGround', 'lw', 'lt'].forEach(k => f.elements[k].disabled = !c.posts);
+  if (!GROUNDS[c.ground].soft) f.elements.postGround.disabled = true;
+  f.elements.drain.disabled = !GROUNDS[c.ground].layers.includes('drainage');
   ['netType', 'mesh', 'top', 'front'].forEach(k => f.elements[k].disabled = !c.net);
   f.elements.chain.disabled = !(c.net && c.top === 'klapp');
 }
@@ -161,7 +167,8 @@ function render() {
     ['Grundfläche', `${fmt(G.footX)} × ${fmt(G.footZ)} cm`],
     ['Höhe', `${fmt(height)} cm`],
     ['Pflanzfläche', `${fmt(c.nx * c.nz * c.cell * c.cell / 10000)} m² · ${c.nx * c.nz} Felder`],
-    ['Erde', `ca. ${Math.round(R.soilL)} l`],
+    ['Erde', `ca. ${Math.round(R.soilL)} l${R.drainL ? ` + ${Math.round(R.drainL)} l Drainage` : ''}`],
+    ['Gewicht gefüllt', `ca. ${R.weight} kg`],
   ].map(([a, b]) => `<div class="stat"><span>${a}</span><b>${b}</b></div>`).join('');
 
   const matRows = [];
@@ -171,6 +178,8 @@ function render() {
   if (c.net) matRows.push([`${fmt(R.netM2)} m²`, NET_TYPES[c.netType].name + `, Masche ${fmt(c.mesh)} cm`, '', 'inkl. 15 % Zugabe']);
   R.hw.forEach(h => matRows.push([`${h.qty} ${h.unit}`, h.label, '', '']));
   matRows.push([`${Math.round(R.soilL)} l`, 'Pflanzerde (Kompost, Kokos, Vermiculit je 1/3)', '', '']);
+  matRows.push(['', `Unter den Kasten (${GROUNDS[c.ground].name})`, '', '', true]);
+  R.ground.forEach(g => matRows.push([`${String(g.qty).replace('.', ',')} ${g.unit}`, g.label, '', g.note]));
 
   const buy = [`${R.boardCut.bars.length}× Brett ${fmt(c.h)} × ${fmt(c.t)} cm à ${fmt(c.stock)} cm`];
   if (R.postCut) buy.push(`${R.postCut.bars.length}× Kantholz ${fmt(c.ps)} × ${fmt(c.ps)} cm à ${fmt(c.stock)} cm`);
@@ -181,8 +190,8 @@ function render() {
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">Materialliste</h2>
       <div class="actions"><button type="button" id="copy">Alles kopieren</button><button type="button" id="csv">CSV</button><button type="button" id="print">Drucken</button><button type="button" id="share">Link teilen</button></div></div>
-      <table style="margin-top:10px"><thead><tr><th>Menge</th><th>Teil</th><th>Länge</th><th>Querschnitt</th></tr></thead>
-      <tbody>${matRows.map(r => `<tr><td class="num">${esc(r[0])}</td><td>${esc(r[1])}</td><td class="num">${esc(r[2])}</td><td class="num">${esc(r[3])}</td></tr>`).join('')}</tbody></table>
+      <table style="margin-top:10px"><thead><tr><th>Menge</th><th>Teil</th><th>Länge</th><th>Maß / Hinweis</th></tr></thead>
+      <tbody>${matRows.map(r => r[4] === true ? `<tr><th colspan="4" style="padding-top:14px;color:var(--ink)">${esc(r[1])}</th></tr>` : `<tr><td class="num">${esc(r[0])}</td><td>${esc(r[1])}</td><td class="num">${esc(r[2])}</td><td class="num">${esc(r[3])}</td></tr>`).join('')}</tbody></table>
       <p style="font-size:14px;margin:12px 0 0"><b>Einkaufen:</b> ${buy.map(esc).join(' · ')}</p>
     </div>
     <div class="card">
