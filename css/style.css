@@ -11,8 +11,9 @@ body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.5; }
 header { padding: 18px 20px 6px; }
 header h1 { margin: 0; font-size: 22px; font-weight: 600; }
 header p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
-main { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; padding: 12px 20px 40px; align-items: start; }
-@media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 10px 12px 40px; } #viewer-wrap { order: -1; } }
+main { display: flex; flex-direction: column; gap: 16px; padding: 12px 20px 40px; }
+.top { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { main { padding: 10px 12px 40px; } .top { grid-template-columns: 1fr; } #viewer-wrap { order: -1; } }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
 #controls { display: flex; flex-direction: column; gap: 12px; }
 fieldset { border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); margin: 0; padding: 10px 14px 12px; }
@@ -34,7 +35,7 @@ button.on { background: var(--accent); color: var(--accent-ink); border-color: v
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
 .stat span { display: block; font-size: 12px; color: var(--muted); }
 .stat b { font-size: 18px; font-weight: 600; }
-#output { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 16px; }
+#output { display: flex; flex-direction: column; gap: 16px; }
 #output h2 { font-size: 18px; margin: 0 0 8px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -58,7 +59,7 @@ ol.steps b { display: block; }
 footer { color: var(--muted); font-size: 12px; padding: 0 20px 24px; }
 @media print {
   #controls, #viewer-wrap, .actions, header p, footer { display: none !important; }
-  main { display: block; padding: 0; }
+  main, .top { display: block; padding: 0; }
   .card { border: none; padding: 0; }
   body { background: #fff; color: #000; }
 }
